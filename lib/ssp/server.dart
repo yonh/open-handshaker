@@ -172,6 +172,9 @@ class SspAgentServer {
 
   void Function(AgentSession)? onSessionClosed;
 
+  /// Debug/diagnostic hook for dropped connections (bad packets etc.).
+  void Function(Object error, StackTrace st)? onError;
+
   Future<void> _onData(AgentSession session, Uint8List bytes) async {
     List<ModernPacket> packets;
     try {
@@ -184,7 +187,8 @@ class SspAgentServer {
     for (final pkt in packets) {
       try {
         await _handlePacket(session, pkt);
-      } catch (_) {
+      } catch (e, st) {
+        onError?.call(e, st);
         // A malformed packet must not kill the daemon; drop the connection.
         await session.channel.close();
         _drop(session);

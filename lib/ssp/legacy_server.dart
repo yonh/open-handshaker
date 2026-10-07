@@ -139,7 +139,10 @@ class LegacyAgentServer {
       onKeepAlive?.call(conn);
     }
     final body = await requestHandler(conn, req);
-    conn.sendResponse(req.command, req.version, req.subtype, body);
+    // Heartbeat (b/g) always answers subtype 2 regardless of request subtype.
+    final respSubtype =
+        req.command == LegacyCmd.heartbeat ? 2 : req.subtype;
+    conn.sendResponse(req.command, req.version, respSubtype, body);
     if (!conn.keepAlive) {
       await conn.close();
       _connections.remove(conn);
