@@ -8,6 +8,7 @@ import '../ssp/trust_store.dart';
 import 'discovery/usb_discovery.dart';
 import 'discovery/wifi_discovery.dart';
 import 'host_controller.dart';
+import 'push_hub.dart';
 
 /// Real [HostController]: Wi-Fi scan + adb probe discovery, SSP handshake
 /// with first-connect approval, TrustedDevice persistence, auto-reconnect,
@@ -56,8 +57,17 @@ class HostControllerImpl extends HostController {
 
   SspClient? _client;
   SspApi? _api;
+  PushHub? _hub;
   DeviceCandidate? _activeCandidate;
   int _transferSeq = 0;
+
+  /// Typed push stream for the live connection (MonitorFolder events,
+  /// FileChange, library/clipboard changes). Null while disconnected.
+  PushHub? get pushHub {
+    final c = _client;
+    if (c == null) return null;
+    return _hub ??= PushHub(c);
+  }
 
   @override
   ConnState get state => _state;
@@ -73,9 +83,6 @@ class HostControllerImpl extends HostController {
   SspApi? get api => _api;
   @override
   TrustedDevice? get connectedDevice => _client?.trustedDevice;
-  @override
-  List<TransferTask> get transfers =>
-      List.unmodifiable([..._transfers, ..._doneTasks.reversed]);
   @override
   Stream<List<TransferTask>> get transfersStream => _transfersCtl.stream;
   @override
@@ -225,6 +232,8 @@ class HostControllerImpl extends HostController {
     if (_closed || _state != ConnState.connected) return;
     _api = null;
     _client = null;
+    unawaited(_hub?.dispose());
+    _hub = null;
     if (_autoReconnect) {
       _setState(ConnState.reconnecting);
       _scheduleReconnect();
@@ -241,6 +250,8 @@ class HostControllerImpl extends HostController {
     await _client?.close().catchError((_) {});
     _client = null;
     _api = null;
+    unawaited(_hub?.dispose());
+    _hub = null;
     _setState(_discovering ? ConnState.discovering : ConnState.disconnected);
   }
 
@@ -250,14 +261,96 @@ class HostControllerImpl extends HostController {
     await trustStore.save();
   }
 
-  // ---------------- transfers ----------------
+  // ---------------- transfer center ----------------
 
-  TransferTask _enqueue(String name, int total, {required bool isUpload}) {
-    final t = TransferTask(
-        id: 't${++_transferSeq}', name: name, total: total, isUpload: isUpload);
-    _transfers.add(t);
+  /// How many transfers may run at once (queue drains the rest).
+  int maxConcurrentTransfers = 2;
+  final _queue = <TransferTask>[];
+  final _abortFlags = <String, bool>{};
+  final _pauseFlags = <String, bool>{};
+
+  @override
+  List<TransferTask> get transfers => List.unmodifiable(
+      [..._transfers, ..._queue, ..._doneTasks.reversed]);
+
+  TransferTask _enqueue(TransferTask t) {
+    _queue.add(t..waiting = true);
     _publishTransfers();
+    unawaited(_pump());
     return t;
+  }
+
+  Future<void> _pump() async {
+    while (_transfers.length < maxConcurrentTransfers && _queue.isNotEmpty) {
+      final t = _queue.removeAt(0)..waiting = false;
+      _transfers.add(t);
+      _publishTransfers();
+      unawaited(_run(t));
+    }
+  }
+
+  Future<void> _run(TransferTask t) async {
+    final client = _client;
+    if (client == null) {
+      _finish(t, StateError('not connected'));
+      return;
+    }
+    bool cancelled() => _abortFlags[t.id] == true || _pauseFlags[t.id] == true;
+    try {
+      if (t.isUpload) {
+        await client.upload(t.localPath, t.remotePath, cancelled: cancelled,
+            onProgress: (done, total) {
+          t.done = done;
+          _publishTransfers();
+        });
+      } else {
+        final tmp = '${t.localPath}.hsdownload';
+        final offset = File(tmp).existsSync() ? File(tmp).lengthSync() : 0;
+        t.done = offset;
+        await client.download(t.remotePath, t.localPath,
+            offset: offset, cancelled: cancelled,
+            onProgress: (done, total) {
+          if (t.total == 0) _setTotal(t, offset + total);
+          t.done = offset + done;
+          _publishTransfers();
+        });
+      }
+      if (_pauseFlags[t.id] == true) {
+        t.paused = true;
+        _transfers.remove(t);
+        _doneTasks.add(t);
+      } else if (_abortFlags[t.id] == true) {
+        t.cancelled = true;
+        _transfers.remove(t);
+        _doneTasks.add(t);
+      } else {
+        _finish(t);
+      }
+    } catch (e) {
+      if (_pauseFlags[t.id] == true) {
+        t.paused = true;
+        _transfers.remove(t);
+        _doneTasks.add(t);
+      } else if (_abortFlags[t.id] == true || e is TransferCancelled) {
+        t.cancelled = true;
+        _transfers.remove(t);
+        _doneTasks.add(t);
+      } else {
+        _finish(t, e);
+      }
+    } finally {
+      _abortFlags.remove(t.id);
+      _pauseFlags.remove(t.id);
+      _trimDone();
+      _publishTransfers();
+      unawaited(_pump());
+    }
+  }
+
+  void _setTotal(TransferTask t, int total) {
+    // Mutate in place — replacing the object would freeze it in `transfers`
+    // while the running closure keeps mutating the stale instance.
+    t.total = total;
   }
 
   void _finish(TransferTask t, [Object? error]) {
@@ -269,60 +362,89 @@ class HostControllerImpl extends HostController {
       t.done = t.total;
     }
     _doneTasks.add(t);
-    if (_doneTasks.length > 100) _doneTasks.removeAt(0);
+    _trimDone();
+    _publishTransfers();
+  }
+
+  void _trimDone() {
+    while (_doneTasks.length > 100) {
+      _doneTasks.removeAt(0);
+    }
+  }
+
+  @override
+  Future<TransferTask> downloadFile(String remotePath, String localPath,
+      {String? taskName}) async {
+    final t = TransferTask(
+        id: 't${++_transferSeq}',
+        name: taskName ?? remotePath.split('/').last,
+        total: 0,
+        remotePath: remotePath,
+        localPath: localPath);
+    return _enqueue(t);
+  }
+
+  @override
+  Future<TransferTask> uploadFile(String localPath, String remotePath,
+      {String? taskName}) async {
+    final t = TransferTask(
+        id: 't${++_transferSeq}',
+        name: taskName ?? localPath.split('/').last,
+        total: await File(localPath).length().catchError((_) => 0),
+        isUpload: true,
+        remotePath: remotePath,
+        localPath: localPath);
+    return _enqueue(t);
+  }
+
+  @override
+  void cancelTransfer(String taskId) {
+    final qi = _queue.indexWhere((t) => t.id == taskId);
+    if (qi >= 0) {
+      final t = _queue.removeAt(qi)
+        ..cancelled = true
+        ..waiting = false;
+      _doneTasks.add(t);
+      _publishTransfers();
+      return;
+    }
+    _abortFlags[taskId] = true;
     _publishTransfers();
   }
 
   @override
-  Future<void> downloadFile(String remotePath, String localPath,
-      {String? taskName}) async {
-    final client = _client;
-    if (client == null) throw StateError('not connected');
-    var t = _enqueue(taskName ?? remotePath.split('/').last, 0,
-        isUpload: false);
-    try {
-      await client.download(remotePath, localPath,
-          onProgress: (done, total) {
-        if (t.total == 0) t = _replaceTotal(t, total);
-        t.done = done;
-        _publishTransfers();
-      });
-      _finish(t);
-    } catch (e) {
-      _finish(t, e);
-      rethrow;
+  void pauseTransfer(String taskId) {
+    final qi = _queue.indexWhere((t) => t.id == taskId);
+    if (qi >= 0) {
+      _queue.removeAt(qi).paused = true;
+      _publishTransfers();
+      return;
     }
+    _pauseFlags[taskId] = true;
   }
 
   @override
-  Future<void> uploadFile(String localPath, String remotePath,
-      {String? taskName}) async {
-    final client = _client;
-    if (client == null) throw StateError('not connected');
-    final total = await File(localPath).length();
-    final t = _enqueue(taskName ?? localPath.split('/').last, total,
-        isUpload: true);
-    try {
-      await client.upload(localPath, remotePath, onProgress: (done, _) {
-        t.done = done;
-        _publishTransfers();
-      });
-      _finish(t);
-    } catch (e) {
-      _finish(t, e);
-      rethrow;
-    }
+  void resumeTransfer(String taskId) {
+    final i = _doneTasks.indexWhere((t) => t.id == taskId);
+    if (i < 0) return;
+    final old = _doneTasks.removeAt(i);
+    _enqueue(TransferTask(
+        id: old.id,
+        name: old.name,
+        total: 0,
+        isUpload: old.isUpload,
+        remotePath: old.remotePath,
+        localPath: old.localPath)
+      ..done = old.done);
   }
 
-  TransferTask _replaceTotal(TransferTask t, int total) {
-    final idx = _transfers.indexOf(t);
-    final nt = TransferTask(
-        id: t.id, name: t.name, total: total, isUpload: t.isUpload)
-      ..done = t.done
-      ..completed = t.completed
-      ..error = t.error;
-    if (idx >= 0) _transfers[idx] = nt;
-    return nt;
+  /// Test hook: attach an already-handshaken client without running
+  /// [connect]. Marks the controller connected.
+  void debugUseClient(SspClient client, SspApi api) {
+    _client = client;
+    _api = api;
+    client.onDisconnected = () => unawaited(_onLinkDown());
+    _setState(ConnState.connected);
   }
 
   @override

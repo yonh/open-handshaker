@@ -136,6 +136,13 @@ class _SessionQueue {
   }
 }
 
+/// Thrown by download/upload when the caller's `cancelled` probe fires.
+class TransferCancelled implements Exception {
+  const TransferCancelled();
+  @override
+  String toString() => 'transfer cancelled';
+}
+
 /// Modern SSP v2 host client over a [ByteChannel].
 class SspClient {
   SspClient(this.channel, {required this.identity, this.trustStore});
@@ -184,8 +191,15 @@ class SspClient {
         }
         continue;
       }
-      for (final m in _demux.addChunk(chunk)) {
-        _queueFor(m.sessionId).push(m.payload);
+      try {
+        for (final m in _demux.addChunk(chunk)) {
+          _queueFor(m.sessionId).push(m.payload);
+        }
+      } catch (_) {
+        // A stray chunk on a drained session (cancelled transfer leftovers)
+        // can desync the logical reader — drop the session's buffered state
+        // and resync rather than killing the connection.
+        _demux.dropSession(chunk.sessionId);
       }
     }
   }
@@ -370,7 +384,8 @@ class SspClient {
       {int offset = 0,
       int length = 0,
       bool needMd5 = false,
-      void Function(int received, int total)? onProgress}) async {
+      void Function(int received, int total)? onProgress,
+      bool Function()? cancelled}) async {
     final sid = _allocSession();
     _fileBodySessions.add(sid);
     final bodyCtl = StreamController<Uint8List>();
@@ -395,7 +410,7 @@ class SspClient {
     var received = 0;
     final tmpPath = '$localPath.hsdownload';
 
-    Future<void> handleBytes(Uint8List b) async {
+    Future<void> handleBytes(Uint8List b, {bool skipWrite = false}) async {
       pending.add(b);
       var data = pending.toBytes();
       if (header == null) {
@@ -416,23 +431,32 @@ class SspClient {
         expected = header!.range.length.toInt();
         final f = File(tmpPath);
         await f.parent.create(recursive: true);
-        raf = await f.open(mode: FileMode.write);
+        // Resume appends to the partial .hsdownload when offset > 0.
+        raf = await f.open(
+            mode: offset > 0 ? FileMode.append : FileMode.write);
       }
       // flush pending body bytes
       final body = pending.toBytes();
       final need = expected - received;
       if (need > 0 && body.isNotEmpty) {
         final slice = body.length > need ? body.sublist(0, need) : body;
-        await raf!.writeFrom(slice);
+        if (!skipWrite) {
+          await raf!.writeFrom(slice);
+          onProgress?.call(received + slice.length, expected);
+        }
         received += slice.length;
-        onProgress?.call(received, expected);
       }
       pending.clear();
     }
 
+    // On cancel we keep reading the body off the wire (the agent has
+    // already queued it — the only sane abort) and count bytes without
+    // writing them, then throw TransferCancelled once drained.
+    var aborted = false;
     try {
       await for (final chunk in bodyCtl.stream) {
-        await handleBytes(chunk);
+        if (!aborted && cancelled?.call() == true) aborted = true;
+        await handleBytes(chunk, skipWrite: aborted);
         if (header != null && received >= expected) break;
       }
     } finally {
@@ -444,6 +468,7 @@ class SspClient {
     if (header == null) {
       throw StateError('connection closed before download header');
     }
+    if (aborted) throw const TransferCancelled();
     if (needMd5 && header!.dataMd5.isNotEmpty) {
       final digest = md5Hex(await File(tmpPath).readAsBytes());
       if (digest.toLowerCase() != header!.dataMd5.toLowerCase()) {
@@ -461,7 +486,8 @@ class SspClient {
   /// waits for SSPUploadFileResponseHeader.ready, streams flag3 chunks,
   /// then awaits the final SSPUploadFileResponse ack (our agent sends one).
   Future<pb.SSPUploadFileResponse> upload(String localPath, String remotePath,
-      {void Function(int sent, int total)? onProgress}) async {
+      {void Function(int sent, int total)? onProgress,
+      bool Function()? cancelled}) async {
     final file = File(localPath);
     final total = await file.length();
     final sid = _allocSession();
@@ -493,6 +519,19 @@ class SspClient {
     try {
       var sent = 0;
       while (sent < total) {
+        if (cancelled?.call() == true) {
+          // Tell the agent to discard the partial upload (type 36 cancel).
+          try {
+            _send(ModernTransport.signedPacket(
+                _allocSession(),
+                (pb.SSPCancelRequest()
+                      ..type = Req.cancel
+                      ..sessionId = Int64(sid))
+                    .writeToBuffer(),
+                _sign));
+          } catch (_) {}
+          throw const TransferCancelled();
+        }
         final n =
             (total - sent) < ModernTransport.maxFileChunk ? (total - sent) : ModernTransport.maxFileChunk;
         final chunk = await raf.read(n);

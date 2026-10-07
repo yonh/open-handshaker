@@ -21,10 +21,12 @@ import 'providers/files_provider.dart';
 /// Construct it with the platform-side [ChannelProviders]; on desktop the
 /// channel calls degrade gracefully so the daemon runs for development.
 class AgentService {
-  AgentService();
+  AgentService({ChannelProviders? channels, FilesProvider? files})
+      : channels = channels ?? ChannelProviders(),
+        files = files ?? FilesProvider();
 
-  final files = FilesProvider();
-  final channels = ChannelProviders();
+  final FilesProvider files;
+  final ChannelProviders channels;
   late AgentHandlers handlers =
       AgentHandlers(files: files, channels: channels);
   late final LegacyAgentHandlers legacyHandlers =
@@ -57,12 +59,11 @@ class AgentService {
     FutureOr<TrustDecision?> Function(PairingRequest,
             Completer<TrustDecision>)?
         onPairingRequest,
+    int modernPort = portModern,
+    int legacyPort = portLegacy,
+    int httpPort = portHttp,
   }) async {
-    handlers = AgentHandlers(
-      files: files,
-      channels: channels,
-      onQuit: (s) => s.channel.close(),
-    );
+    handlers.onQuit = (s) => s.channel.close();
 
     modern = SspAgentServer(
       identity: identity,
@@ -77,7 +78,7 @@ class AgentService {
       ..fileDataHandler = handlers.onFileData;
 
     _modernSocket = await ServerSocket.bind(
-        InternetAddress.anyIPv4, portModern,
+        InternetAddress.anyIPv4, modernPort,
         shared: true);
     _modernSocket!.listen((sock) {
       sock.setOption(SocketOption.tcpNoDelay, true);
@@ -86,14 +87,14 @@ class AgentService {
 
     legacy = LegacyAgentServer(requestHandler: legacyHandlers.call);
     _legacySocket = await ServerSocket.bind(
-        InternetAddress.anyIPv4, portLegacy,
+        InternetAddress.anyIPv4, legacyPort,
         shared: true);
     _legacySocket!.listen((sock) {
       sock.setOption(SocketOption.tcpNoDelay, true);
       legacy!.attach(SocketChannel(sock));
     });
 
-    http = await HttpFileServer.bind(port: portHttp);
+    http = await HttpFileServer.bind(port: httpPort);
   }
 
   /// Resolve a pending pairing request (device-side UI decision).
@@ -109,5 +110,6 @@ class AgentService {
     await modern?.close();
     await legacy?.close();
     await http?.close();
+    await handlers.dispose();
   }
 }

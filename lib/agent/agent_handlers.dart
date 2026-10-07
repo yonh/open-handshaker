@@ -49,6 +49,7 @@ class AgentHandlers {
 
   final _uploads = <int, _Upload>{};
   final _monitoredFolders = <int, String>{};
+  final _watchers = <int, StreamSubscription<FileSystemEvent>>{};
 
   /// SspAgentServer.requestHandler entry point.
   Future<GeneratedMessage?> call(AgentSession session, Uint8List proto,
@@ -122,17 +123,15 @@ class AgentHandlers {
       case 0x17: // monitorFolder (23)
         final req = pb.SSPMonitorFolderRequest.fromBuffer(proto);
         if (req.registerP) {
-          _monitoredFolders[sessionId] = req.file.path;
+          _watchFolder(session, sessionId, req.file.path);
         } else {
-          _monitoredFolders.remove(sessionId);
+          _unwatchFolder(sessionId);
         }
         return pb.SSPMonitorFolderResponseHeader()
           ..type = Req.monitorFolderHeader
           ..succeed = true;
       case 0x25: // photoSync (37)
-        return pb.SSPPhotoSyncResponse()
-          ..type = Req.photoSync
-          ..isSuccess = false;
+        return _photoSync(proto);
       case 0x27: // syncMonitor (39)
         return pb.SSPSyncMonitorResponse()
           ..type = Req.syncMonitor
@@ -267,8 +266,85 @@ class AgentHandlers {
     }
   }
 
-  /// Monitored folders registered by hosts (Phase 5 uses these to push
-  /// FileChange/MonitorFolderResponse events).
+  /// Monitored folders registered by hosts.
   Map<int, String> get monitoredFolders =>
       Map.unmodifiable(_monitoredFolders);
+
+  /// PhotoSync: respond with the device's current photo-library file list
+  /// (`filesArray`); the host diffs it against its last snapshot — the
+  /// original's exact incremental algorithm is 待验证 but this semantics
+  /// makes sync work end-to-end against our agent.
+  Future<GeneratedMessage> _photoSync(Uint8List proto) async {
+    final req = pb.SSPPhotoSyncRequest.fromBuffer(proto);
+    final resp = pb.SSPPhotoSyncResponse()
+      ..type = Req.photoSync
+      ..isSuccess = true
+      ..isFirst = req.filesArray.isEmpty;
+    try {
+      final lib = await channels.photoLibrary(pb.SSPGetPhotoLibraryRequest()
+        ..type = Req.getPhotoLib);
+      for (final img in lib.imageArray) {
+        resp.filesArray.add(pb.SSPFile()
+          ..path = img.path
+          ..fileSize = img.fileSize
+          ..createdTimestamp = img.createdTimestamp
+          ..modifiedTimestamp = img.modifiedTimestamp
+          ..isDirectory = false
+          ..fileType = pb.SSPFileType.SSPFileType_Normal);
+      }
+    } catch (_) {
+      resp.isSuccess = false;
+    }
+    return resp;
+  }
+
+  // ---------------- folder watch ----------------
+
+  void _watchFolder(AgentSession session, int sessionId, String path) {
+    _unwatchFolder(sessionId);
+    _monitoredFolders[sessionId] = path;
+    final dir = Directory(path);
+    if (!dir.existsSync()) return;
+    _watchers[sessionId] =
+        dir.watch(recursive: true).listen((ev) => _emitEvent(session, sessionId, ev));
+    unawaited(_watchers[sessionId]!.asFuture().catchError((_) {}));
+  }
+
+  void _unwatchFolder(int sessionId) {
+    _watchers.remove(sessionId)?.cancel();
+    _monitoredFolders.remove(sessionId);
+  }
+
+  void _emitEvent(AgentSession session, int sessionId, FileSystemEvent ev) {
+    final type = switch (ev) {
+      FileSystemCreateEvent _ => FileEventType.create,
+      FileSystemDeleteEvent _ => FileEventType.delete,
+      FileSystemMoveEvent _ => FileEventType.movedFrom,
+      _ => FileEventType.closeWrite,
+    };
+    final f = ev is FileSystemMoveEvent && ev.destination != null
+        ? ev.destination!
+        : ev.path;
+    session.push(
+        sessionId,
+        pb.SSPMonitorFolderResponse()
+          ..type = Req.monitorFolderResp
+          ..eventArray.add(pb.SSPFileEvent()
+            ..file = (pb.SSPFile()
+              ..path = f
+              ..isDirectory = FileSystemEntity.isDirectorySync(f))
+            ..event = type));
+  }
+
+  /// Daemon shutdown helper: cancel every watcher + pending upload.
+  Future<void> dispose() async {
+    for (final w in _watchers.values) {
+      await w.cancel();
+    }
+    _watchers.clear();
+    for (final u in _uploads.values) {
+      await u.raf?.close();
+    }
+    _uploads.clear();
+  }
 }

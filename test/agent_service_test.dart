@@ -14,8 +14,8 @@ import 'package:handshaker_open/ssp/transport.dart';
 import 'package:handshaker_open/ssp/trust_store.dart';
 import 'package:handshaker_open/ssp/types.dart';
 
-/// Full-daemon loopback over real TCP sockets: legacy :10086, modern :10088,
-/// HTTP :19999 (the AgentService ports).
+/// Full-daemon loopback over real TCP sockets: legacy :12086, modern :12088,
+/// HTTP :29999 (alternate test ports to avoid cross-file contention).
 void main() {
   late Directory tmp;
   late AgentService agent;
@@ -27,6 +27,9 @@ void main() {
       identity: AgentIdentity(deviceUuid: 'dev-loop', deviceName: 'Loop Pixel'),
       hostTrustStore: HostTrustStore('${tmp.path}/hosts.json'),
       onPairingRequest: (req, pending) => TrustDecision.always,
+      modernPort: 12088,
+      legacyPort: 12086,
+      httpPort: 29999,
     );
   });
 
@@ -35,10 +38,10 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  group('modern :10088', () {
+  group('modern :12088', () {
     late SspClient client;
     setUp(() async {
-      final ch = await SocketChannel.connect('127.0.0.1', 10088);
+      final ch = await SocketChannel.connect('127.0.0.1', 12088);
       client = SspClient(
         ch,
         identity: HostIdentity.generate(
@@ -94,16 +97,16 @@ void main() {
     });
   });
 
-  group('legacy :10086', () {
+  group('legacy :12086', () {
     test('handshake + GET device info JSON + heartbeat', () async {
       final keyPair = generateRsaKeyPair();
       final client = LegacySspClient(keyPair: keyPair);
       // handshake
-      final hs = await SocketChannel.connect('127.0.0.1', 10086);
+      final hs = await SocketChannel.connect('127.0.0.1', 12086);
       expect(await client.handshake(hs), isTrue);
 
       // GET (C=3) — device JSON
-      final ch2 = await SocketChannel.connect('127.0.0.1', 10086);
+      final ch2 = await SocketChannel.connect('127.0.0.1', 12086);
       final resp = await client.request(ch2, LegacyCmd.get, 0);
       expect(resp.command, LegacyCmd.get);
       final j = jsonDecode(utf8.decode(resp.body)) as Map<String, dynamic>;
@@ -111,20 +114,20 @@ void main() {
       expect(j.containsKey('battery_level'), isTrue);
 
       // heartbeat request (signed C=6) -> [6,V,2] response
-      final ch3 = await SocketChannel.connect('127.0.0.1', 10086);
+      final ch3 = await SocketChannel.connect('127.0.0.1', 12086);
       final pong = await client.request(ch3, LegacyCmd.heartbeat, 1);
       expect(pong.command, 6);
       expect(pong.subtype, 2);
     });
   });
 
-  group('http :19999', () {
+  group('http :29999', () {
     test('?test echo + ?file_path download + Range', () async {
       final c = HttpClient();
 
       // test endpoint
       var req = await c.getUrl(
-          Uri.parse('http://127.0.0.1:19999/?test0123456789abcdefXYZ'));
+          Uri.parse('http://127.0.0.1:29999/?test0123456789abcdefXYZ'));
       var resp = await req.close();
       expect(resp.statusCode, 200);
       final body = await resp.expand((c) => c).toList();
@@ -134,7 +137,7 @@ void main() {
       final f = File('${tmp.path}/http.bin')
         ..writeAsBytesSync(List<int>.generate(100000, (i) => i % 251));
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:19999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
       resp = await req.close();
       expect(resp.statusCode, 200);
       final data = await resp.expand((c) => c).toList();
@@ -142,7 +145,7 @@ void main() {
 
       // Range bytes=50000-
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:19999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=50000-');
       resp = await req.close();
       expect(resp.statusCode, 206);
@@ -152,13 +155,13 @@ void main() {
 
       // bad range -> 416
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:19999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=10-20');
       resp = await req.close();
       expect(resp.statusCode, 416);
 
       // 404
-      req = await c.getUrl(Uri.parse('http://127.0.0.1:19999/?nope'));
+      req = await c.getUrl(Uri.parse('http://127.0.0.1:29999/?nope'));
       resp = await req.close();
       expect(resp.statusCode, 404);
       c.close();

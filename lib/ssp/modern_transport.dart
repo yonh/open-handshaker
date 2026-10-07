@@ -211,6 +211,9 @@ class SessionDemux {
     ];
   }
 
+  /// Forget a session's buffered partial message (desync recovery).
+  void dropSession(int sessionId) => _sessions.remove(sessionId);
+
   /// Raw remaining per-session bytes not yet a complete logical message
   /// (used by file-body phase where bytes after the header are raw file data).
   Uint8List drainRemainder(int sessionId) {

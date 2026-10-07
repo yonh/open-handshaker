@@ -75,15 +75,37 @@ class TransferTask {
     this.done = 0,
     this.completed = false,
     this.error,
+    this.waiting = false,
+    this.paused = false,
+    this.cancelled = false,
+    this.remotePath = '',
+    this.localPath = '',
   });
 
   final String id;
   final String name;
-  final int total;
+
+  /// Total bytes — filled in once the transfer header arrives (0 = unknown).
+  int total;
   final bool isUpload;
   int done;
   bool completed;
   String? error;
+
+  /// Queued, not yet started (transfer center).
+  bool waiting;
+
+  /// Download paused (resume reuses the .hsdownload partial + Range offset).
+  bool paused;
+
+  /// Cancelled before finishing.
+  bool cancelled;
+
+  /// Remote source / target path (kept for pause-resume).
+  String remotePath;
+
+  /// Local target / source path.
+  String localPath;
 
   double get progress => total == 0 ? 0 : done / total;
 }
@@ -139,11 +161,21 @@ abstract class HostController {
   Future<void> revokeTrust(String deviceUuid);
 
   /// Local convenience wrappers the UI uses for transfers; they queue work
-  /// and publish [TransferTask] progress.
-  Future<void> downloadFile(String remotePath, String localPath,
+  /// (max a few concurrent) and publish [TransferTask] progress.
+  /// Both return the enqueued task.
+  Future<TransferTask> downloadFile(String remotePath, String localPath,
       {String? taskName});
-  Future<void> uploadFile(String localPath, String remotePath,
+  Future<TransferTask> uploadFile(String localPath, String remotePath,
       {String? taskName});
+
+  /// Cancel a waiting or running transfer.
+  void cancelTransfer(String taskId);
+
+  /// Pause a running download (partial .hsdownload kept for resume).
+  void pauseTransfer(String taskId);
+
+  /// Resume a paused download (Range offset from the partial file).
+  void resumeTransfer(String taskId);
 
   Future<void> dispose();
 }
@@ -216,11 +248,29 @@ class MockHostController extends HostController {
   @override
   Future<void> revokeTrust(String deviceUuid) async {}
   @override
-  Future<void> downloadFile(String remotePath, String localPath,
-      {String? taskName}) async {}
+  Future<TransferTask> downloadFile(String remotePath, String localPath,
+      {String? taskName}) async {
+    final t = TransferTask(
+        id: 'mock', name: taskName ?? remotePath, total: 0)
+      ..completed = true;
+    return t;
+  }
+
   @override
-  Future<void> uploadFile(String localPath, String remotePath,
-      {String? taskName}) async {}
+  Future<TransferTask> uploadFile(String localPath, String remotePath,
+      {String? taskName}) async {
+    final t = TransferTask(
+        id: 'mock', name: taskName ?? localPath, total: 0, isUpload: true)
+      ..completed = true;
+    return t;
+  }
+
+  @override
+  void cancelTransfer(String taskId) {}
+  @override
+  void pauseTransfer(String taskId) {}
+  @override
+  void resumeTransfer(String taskId) {}
   @override
   Future<void> dispose() async {
     await _stateCtl.close();
