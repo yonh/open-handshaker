@@ -1,9 +1,15 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'agent_ui/agent_app.dart';
+import 'host/host_bootstrap.dart';
+import 'host/host_controller.dart';
+import 'host/pages/apps_page.dart';
+import 'host/pages/demo_support.dart';
+import 'host/pages/host_shell.dart';
 
 void main() {
   runApp(const HandShakerRoot());
@@ -19,25 +25,67 @@ class HandShakerRoot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_isAgentPlatform) return const AgentApp();
-    return const _HostPlaceholder();
+    return const HostEntrypoint();
   }
 }
 
-/// Host 管理端入口占位 —— lib/host/pages/ 完整 UI 接入后替换。
-class _HostPlaceholder extends StatelessWidget {
-  const _HostPlaceholder();
+/// Host 管理端入口：装配真实连接层（或 --dart-define=HOST_DEMO=true 的
+/// 演示数据）后进入 HostApp 主界面。
+class HostEntrypoint extends StatefulWidget {
+  const HostEntrypoint({super.key, this.demo = _demoFromEnv});
+
+  /// `flutter run -d macos --dart-define=HOST_DEMO=true` → 假数据演示。
+  static const _demoFromEnv = bool.fromEnvironment('HOST_DEMO');
+
+  final bool demo;
+
+  @override
+  State<HostEntrypoint> createState() => _HostEntrypointState();
+}
+
+class _HostEntrypointState extends State<HostEntrypoint> {
+  HostController? _controller;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_boot());
+  }
+
+  Future<void> _boot() async {
+    if (widget.demo) {
+      setState(
+          () => _controller = DemoHostController(api: DemoSspApi()));
+      return;
+    }
+    try {
+      final c = await buildRealHostController();
+      if (mounted) setState(() => _controller = c);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HandShaker',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5B7EF7)),
-      ),
-      home: const Scaffold(
-        body: Center(child: Text('HandShaker Host')),
-      ),
+    final c = _controller;
+    if (c == null) {
+      return MaterialApp(
+        title: 'HandShaker',
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: _error == null
+                ? const CircularProgressIndicator()
+                : Text('Host 初始化失败：$_error'),
+          ),
+        ),
+      );
+    }
+    return HostApp(
+      controller: c,
+      appsSource: widget.demo ? DemoAppsSource() : WireAppsSource(),
     );
   }
 }
