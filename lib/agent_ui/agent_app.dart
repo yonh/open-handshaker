@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../agent/agent_service.dart';
 import '../agent/providers/channel_providers.dart';
@@ -44,9 +45,10 @@ class _AgentAppState extends State<AgentApp> {
     setState(() => _error = null);
     try {
       final agent = await _ensureAgent();
+      _uuid = await _deviceUuid();
       await agent.start(
         identity: AgentIdentity(
-          deviceUuid: await _deviceUuid(),
+          deviceUuid: _uuid,
           deviceName: 'Android 设备',
         ),
         hostTrustStore: HostTrustStore('${await _dataDir()}/hosts.json'),
@@ -103,6 +105,19 @@ class _AgentAppState extends State<AgentApp> {
     } catch (_) {}
     return ips;
   }
+
+  /// QR 内容：`handshaker://connect?ip=..&port=..&name=..&uuid=..` —
+  /// 承载 legacy 探测端口 + 设备标识（原版为 t.tt 短链，格式见
+  /// docs/PROTOCOL.md「待验证」标注）。
+  String _qrPayload() {
+    final ip = _localIps.isNotEmpty ? _localIps.first : '';
+    return 'handshaker://connect?ip=$ip'
+        '&port=${AgentService.portLegacy}'
+        '&name=${Uri.encodeComponent('Android 设备')}'
+        '&uuid=$_uuid';
+  }
+
+  String _uuid = '';
 
   void _showPairingDialog(PairingRequest req, Completer<TrustDecision> done) {
     showDialog<void>(
@@ -171,6 +186,26 @@ class _AgentAppState extends State<AgentApp> {
                 leading: const Icon(Icons.wifi),
                 title: const Text('本机地址'),
                 subtitle: Text(_localIps.join('  ')),
+              ),
+            ),
+          const SizedBox(height: 16),
+          if (_running && _localIps.isNotEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(children: [
+                  const Text('扫码配对',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  QrImageView(
+                    data: _qrPayload(),
+                    size: 180,
+                  ),
+                  const SizedBox(height: 8),
+                  Text('电脑端 HandShaker 扫一扫连接',
+                      style: TextStyle(
+                          color: Colors.grey.shade600, fontSize: 12)),
+                ]),
               ),
             ),
           const SizedBox(height: 16),

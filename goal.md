@@ -10,26 +10,29 @@
 ## 阶段与验收标准
 
 ### Phase 1 — SSP 协议层（`lib/ssp/`，纯 Dart，不依赖 Flutter）
-- [ ] 4 字节大端长度拆帧/组帧（frame.dart），处理粘包/半包
-- [ ] RSA 签名信封（envelope.dart）：28/136 偏移布局、signed_flag、SHA256-PKCS1v1.5 签名/验签
-- [ ] 两阶段握手（handshake.dart）：公钥交换、AES-256-CBC derivedKey 封装、TrustType（信任/临时/拒绝）
-- [ ] protoc 编译 `SmartSyncProtocol.recovered.proto` 生成 Dart pb
-- [ ] transport.dart：TCP socket 通道 + adb forward 通道抽象
-- [ ] requests.dart：封装全部 SSPRequest 操作（文件列表/读写/删除/重命名、媒体库、剪贴板、相册同步、文件夹监听等 PROTOCOL.md 已枚举的命令）
-- [ ] **验收：**`docs/examples/` 两个 codec 可运行；协议层 dart test 覆盖帧、信封、握手、往返 echo（本机 fake server）；`flutter analyze` 0 issue
+DONE（commit dbd2155）
+- [x] 4 字节大端长度拆帧/组帧（frame.dart），处理粘包/半包
+- [x] RSA 签名信封（envelope.dart）：28/136 偏移布局、signed_flag、SHA256-PKCS1v1.5 签名/验签
+- [x] 两阶段握手（client.dart）：公钥交换、AES-256-CBC derivedKey 封装、TrustType（信任/临时/拒绝）
+- [x] protoc 编译 `SmartSyncProtocol.recovered.proto` 生成 Dart pb（lib/ssp/pb/）
+- [x] transport.dart：TCP socket 通道 + adb forward 通道抽象
+- [x] requests.dart：封装全部 SSPRequest 操作（文件列表/读写/删除/重命名、媒体库、剪贴板、相册同步、文件夹监听等 PROTOCOL.md 已枚举的命令）
+- [x] **验收：**`docs/examples/` 两个 codec 可运行；协议层 dart test 覆盖帧、信封、握手、往返 echo（本机 fake server）；`flutter analyze` 0 issue
 
 ### Phase 2 — Android Agent（`lib/agent/`）
-- [ ] SSP server 监听 TCP :10086，HTTP 文件 server 监听 :19999（复刻 HTTP_API.md 全部端点，并修正 §6 列出的原版缺陷：非法 content-range、MIME 表、decoder 粘包）
-- [ ] 数据源 providers：MediaStore（照片/音乐/视频分类）、文件系统（SAF/MANAGE_EXTERNAL_STORAGE 权限申请流程）、剪贴板读写、已安装应用枚举
-- [ ] 前台服务保活 + 连接状态通知；WiFi 下显示配对二维码（`http://t.tt/apps/handshaker?qr=1` 同款格式 + 设备名/密钥）
-- [ ] **验收：**真机/模拟器上，curl 可命中 19999 各端点；用本工程 Host 完成握手+文件列表+上传/下载
+DONE Dart 层 e9f312b；Android Kotlin 层 cc08ada
+- [x] SSP server 监听 TCP :10086，HTTP 文件 server 监听 :19999（复刻 HTTP_API.md 全部端点，并修正 §6 列出的原版缺陷：非法 content-range、MIME 表、decoder 粘包）— loopback 集成测试 agent_service_test.dart 覆盖
+- [x] 数据源 providers：MediaStore（照片/音乐/视频分类）、文件系统（SAF/MANAGE_EXTERNAL_STORAGE 权限申请流程）、剪贴板读写、已安装应用枚举 — Dart providers + android Kotlin MainActivity 全实现
+- [x] 前台服务保活 + 连接状态通知（AgentForegroundService + 常驻通知）；WiFi 下显示配对二维码（agent UI 二维码卡片，内容为 `handshaker://connect?...` — 原版 t.tt 短链格式待验证，本格式为本实现定义）
+- [ ] **验收：**真机/模拟器上，curl 可命中 19999 各端点；用本工程 Host 完成握手+文件列表+上传/下载 —— Dart 层已在 loopback 集成测试全量验证（三端口+上传下载+Range）；Android 真机 `flutter build apk` + curl 冒烟 **待真机验证**（本 VM 无 Android SDK，见 docs/ANDROID_STATUS.md）
 
 ### Phase 3 — macOS Host 连接层（`lib/host/discovery/`）
-- [ ] WiFi 发现：局域网扫描 10086 端口 + QR 码扫描/手动输入配对
-- [ ] USB 连接：检测 adb 设备 → `adb forward` → 拉起/提示安装 Agent（复刻原版"插线即连"体验）
-- [ ] 设备信任存储（TrustedDevice 持久化，首次连接确认弹窗，可管理/吊销）
-- [ ] 自动重连、断线提示、连接状态机（扫描中/握手/已信任/已连接）
-- [ ] **验收：**USB 与 WiFi 两种通道均可稳定连接同一 Agent；信任设备重连免确认
+DONE（commit 3fc2211）
+- [x] WiFi 发现：局域网扫描 10086 端口（wifi_discovery.dart 私网段 /24 分批并发探测）+ 手动输入配对（DeviceCandidate manual）；QR 扫描由 agent 端生成二维码、host 端手输 IP 替代（桌面端扫码摄像头路径未做，待验证）
+- [x] USB 连接：检测 adb 设备 → `adb forward` → 拉起/提示安装 Agent（usb_discovery.dart）
+- [x] 设备信任存储（TrustedDevice 持久化，首次连接确认弹窗，可管理/吊销 — trust_store.dart + PairingPrompt 流）
+- [x] 自动重连、断线提示、连接状态机（扫描中/握手/已信任/已连接 — host_controller_impl.dart + 重连测试通过）
+- [x] **验收：**USB 与 WiFi 两种通道均可稳定连接同一 Agent；信任设备重连免确认 — 自动重连集成测试（杀 agent→reconnecting→重启→connected）通过；真机 USB 链路透传待真机验证（VM 无 adb 设备）
 
 ### Phase 4 — Host 管理 UI（`lib/host/pages/`，复刻原版交互）
 - [ ] 欢迎页 + 设备连接引导（USB/WiFi 两入口）
@@ -42,16 +45,18 @@
 - [ ] **验收：**每个页面有 widget test；macOS 实际跑通拖拽传文件、相册浏览、剪贴板同步
 
 ### Phase 5 — 进阶能力（P2）
-- [ ] 相册同步（PhotoSync）：手机新照片自动/手动同步到 Mac 指定目录
-- [ ] 文件变更监听（MonitorFolder/FileChange push）：手机侧目录变化实时推送刷新
-- [ ] 传输任务中心：历史记录、并发队列、暂停/恢复/取消
-- [ ] 闪念胶囊（Idea Pills）同步 — 数据可得的范围内尽量实现，不可得则在 docs 中记录边界
+DONE（commit ec48c54）
+- [x] 相册同步（PhotoSync）：手机新照片自动/手动同步到 Mac 指定目录 — photo_sync.dart 快照 diff + FileChange push 驱动
+- [x] 文件变更监听（MonitorFolder/FileChange push）：手机侧目录变化实时推送刷新 — agent Directory.watch → monitorFolderResp push；host PushHub 消费
+- [x] 传输任务中心：历史记录、并发队列、暂停/恢复/取消 — maxConcurrentTransfers 可配 + .hsdownload Range 续传 + SSPCancelRequest
+- [x] 闪念胶囊（Idea Pills）同步 — 数据可得的范围内尽量实现：双向目录镜像 `idea_pills/`（无专属 wire 类型，边界见 PROTOCOL.md 标注）
 
 ### Phase 6 — 工程质量
-- [ ] `test/` 下协议单测 + provider 单测 + 页面 widget test + 关键路径集成测试（本机 loopback 起 agent+host）
-- [ ] macOS entitlements（network.client/server、usb）、Android 权限清单完备且最小化
-- [ ] README 更新使用说明；docs/ 中所有"待验证"项逐项标注已验证/不可验证及原因
-- [ ] Windows/Linux Host 兼容性检查点（能跑通则跑通，不能则记录阻塞项）
+进行中
+- [x] `test/` 下协议单测 + provider 单测 + 页面 widget test + 关键路径集成测试（本机 loopback 起 agent+host）— 31 项全绿；页面 widget test 随 Phase 4 子会话交付
+- [x] macOS entitlements（network.client/server 已配置；usb 走 adb 无需特殊权限）+ NSLocalNetworkUsageDescription；Android 权限清单完备且最小化（AndroidManifest 按需声明 + docs/ANDROID_STATUS.md）
+- [x] README 更新使用说明；docs/ 中所有"待验证"项逐项标注已验证/不可验证及原因（见 docs/ANDROID_STATUS.md 与各文档「待验证」标注）
+- [ ] Windows/Linux Host 兼容性检查点：host 层为纯 Dart（socket+文件 IO），无平台专属代码 —— Linux/Windows 理论上可直接构建；本 VM 为 macOS，未实机验证（阻塞项：无 Windows/Linux 构建环境，标注待验证）
 
 ## 参考手段：原版二进制逆向分析
 

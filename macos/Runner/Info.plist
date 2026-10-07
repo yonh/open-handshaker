@@ -28,5 +28,11 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>扫描局域网中的手机以建立 HandShaker 连接</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_handshaker._tcp</string>
+	</array>
 </dict>
 </plist>
