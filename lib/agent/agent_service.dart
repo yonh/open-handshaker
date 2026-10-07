@@ -106,6 +106,8 @@ class AgentService {
   Future<void> stop() async {
     await _modernSocket?.close();
     await _legacySocket?.close();
+    await modern?.close();
+    await legacy?.close();
     await http?.close();
   }
 }

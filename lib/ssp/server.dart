@@ -172,6 +172,16 @@ class SspAgentServer {
 
   void Function(AgentSession)? onSessionClosed;
 
+  /// Close every attached session (daemon shutdown). Pending pairings are
+  /// denied so their futures do not hang.
+  Future<void> close() async {
+    for (final s in List.of(_sessions)) {
+      _pendingPairings.remove(s.id)?.complete(TrustDecision.deny);
+      await s.channel.close().catchError((_) {});
+      _drop(s);
+    }
+  }
+
   /// Debug/diagnostic hook for dropped connections (bad packets etc.).
   void Function(Object error, StackTrace st)? onError;
 

@@ -87,6 +87,15 @@ class LegacyAgentServer {
 
   void Function(LegacyConnection)? onKeepAlive;
 
+  /// Close every attached connection (daemon shutdown).
+  Future<void> close() async {
+    for (final c in List.of(_connections)) {
+      await c.close().catchError((_) {});
+      _connections.remove(c);
+      if (callbackConnection == c) callbackConnection = null;
+    }
+  }
+
   void attach(ByteChannel channel) {
     final conn = LegacyConnection(channel);
     _connections.add(conn);

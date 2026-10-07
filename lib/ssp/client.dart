@@ -159,6 +159,9 @@ class SspClient {
   pb.SSPHandShakeResponse01? deviceInfo01;
   TrustedDevice? trustedDevice;
 
+  /// Called once when the channel goes down (peer close or error).
+  void Function()? onDisconnected;
+
   bool get isReady => _ready;
   Stream<SspPush> get pushes => _pushCtl.stream;
 
@@ -200,6 +203,7 @@ class SspClient {
     for (final c in _fileBodyCtl.values) {
       c.close();
     }
+    onDisconnected?.call();
   }
 
   int _allocSession() => _nextSessionId++;
@@ -210,11 +214,16 @@ class SspClient {
 
   // ---------------- handshake ----------------
 
-  /// Run Handshake01+02. [waitForTrust] is called when the device answers
-  /// TrustWaiting — default just waits for the next response.
+  /// Run Handshake01+02. [approveUnknownDevice] fires after stage 1 when the
+  /// device has no trust record yet — return false to abort the pairing.
+  /// [onTrustWaiting] fires each time the device answers TrustWaiting while
+  /// its own user decides.
   /// Throws [StateError] on TrustNo or a failed `result` proof.
   Future<SspHandshakeResult> handshake(
-      {Duration stepTimeout = const Duration(seconds: 15)}) async {
+      {Duration stepTimeout = const Duration(seconds: 15),
+      Future<bool> Function(pb.SSPHandShakeResponse01 device)?
+          approveUnknownDevice,
+      void Function()? onTrustWaiting}) async {
     start();
     final wrap = wrapPublicKey(identity.publicKey);
 
@@ -241,6 +250,11 @@ class SspClient {
     final store = trustStore;
     await store?.load();
     var record = store?.find(resp01.deviceUuid);
+    if (record == null && approveUnknownDevice != null) {
+      if (!await approveUnknownDevice(resp01)) {
+        throw StateError('pairing rejected by host');
+      }
+    }
     final req02 = pb.SSPHandShakeRequest02()
       ..type = Req.handshakeReq02
       ..hostUuid = identity.hostUuid
@@ -271,6 +285,7 @@ class SspClient {
       final resp02 = pb.SSPHandShakeResponse02.fromBuffer(payload);
       switch (resp02.trustType) {
         case Trust.waiting:
+          onTrustWaiting?.call();
           continue;
         case Trust.no:
           record.trustType = Trust.no;
