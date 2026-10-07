@@ -40,3 +40,12 @@
 
 - 截屏回传（ScreenCapture）：待定义 wire 类型（goal.md 边界项）。
 - 开机自启（BOOT_COMPLETED）：原版的自启行为「待验证」，当前未声明。
+
+## iOS 端说明
+
+iOS 上 `main.dart` 按平台分流到 AgentApp：daemon 三端口可正常监听，
+文件 provider 走纯 Dart 实现（沙盒目录内文件可正常被 host 浏览/上传下载）。
+相册 / 剪贴板 / 已安装应用需要 Swift 侧 providers（Photos.framework /
+UIPasteboard）——**未实现，待后续补齐**；这些 channel 调用会拿到
+MissingPluginException，Dart 侧已按契约静默降级为空数据。
+iOS 作为 Host 角色（桌面管理 UI 纯 Dart）亦可运行。
