@@ -13,11 +13,9 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.media.MediaMetadataRetriever
-import android.media.ThumbnailUtils
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
-import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -29,7 +27,6 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -226,7 +223,7 @@ class MainActivity : FlutterActivity() {
         val start = call.argument<Int>("start") ?: 0
         val count = call.argument<Int>("count") ?: Int.MAX_VALUE
         val albums = LinkedHashMap<String, MutableList<Map<String, Any?>>>()
-        val projection = arrayOf(
+        val baseCols = mutableListOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.DATA,
@@ -234,17 +231,24 @@ class MainActivity : FlutterActivity() {
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.DATE_MODIFIED,
-            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
-            MediaStore.MediaColumns.BUCKET_ID,
-            if (mediaType == 3) MediaStore.Audio.AudioColumns.ALBUM
-            else MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
-            MediaStore.MediaColumns.WIDTH,
-            MediaStore.MediaColumns.HEIGHT,
-            MediaStore.MediaColumns.DURATION,
             MediaStore.MediaColumns.TITLE,
         )
+        // 音频表没有 WIDTH/HEIGHT/BUCKET 列，分开拼 projection 防止
+        // 部分 ROM 的 provider 对未知列报错。
+        if (mediaType == 3) {
+            baseCols += MediaStore.Audio.AudioColumns.ALBUM
+            baseCols += MediaStore.Audio.AudioColumns.ALBUM_ID
+            baseCols += MediaStore.Audio.AudioColumns.ARTIST
+            baseCols += MediaStore.Audio.AudioColumns.DURATION
+        } else {
+            baseCols += MediaStore.MediaColumns.BUCKET_DISPLAY_NAME
+            baseCols += MediaStore.MediaColumns.BUCKET_ID
+            baseCols += MediaStore.MediaColumns.WIDTH
+            baseCols += MediaStore.MediaColumns.HEIGHT
+            baseCols += MediaStore.MediaColumns.DURATION
+        }
         contentResolver.query(
-            uri, projection.distinct().toTypedArray(), null, null,
+            uri, baseCols.toTypedArray(), null, null,
             "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
         )?.use { c ->
             var idx = 0
@@ -262,6 +266,9 @@ class MainActivity : FlutterActivity() {
                 else
                     str(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
                         .ifEmpty { "其他" }
+                val albumIdCol = if (mediaType == 3)
+                    MediaStore.Audio.AudioColumns.ALBUM_ID
+                else MediaStore.MediaColumns.BUCKET_ID
                 val item = mutableMapOf<String, Any?>(
                     "mediaId" to lng(MediaStore.MediaColumns._ID),
                     "fileName" to str(MediaStore.MediaColumns.DISPLAY_NAME),
@@ -275,7 +282,9 @@ class MainActivity : FlutterActivity() {
                     "durationMs" to lng(MediaStore.MediaColumns.DURATION),
                     "title" to str(MediaStore.MediaColumns.TITLE),
                     "albumName" to bucket,
-                    "albumId" to lng(MediaStore.MediaColumns.BUCKET_ID),
+                    "albumId" to lng(albumIdCol),
+                    "artist" to if (mediaType == 3)
+                        str(MediaStore.Audio.AudioColumns.ARTIST) else "",
                 )
                 albums.getOrPut(bucket) { mutableListOf() }.add(item)
             }
