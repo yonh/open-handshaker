@@ -1,0 +1,198 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+
+import '../agent/agent_service.dart';
+import '../agent/providers/channel_providers.dart';
+import '../ssp/server.dart'
+    show AgentIdentity, PairingRequest, TrustDecision;
+import '../ssp/trust_store.dart';
+
+/// Android/iOS 端 agent 壳：前台服务开关、配对审批、连接指引。
+/// Host 端（macOS/Windows）管理 UI 在 lib/host/pages/。
+class AgentApp extends StatefulWidget {
+  const AgentApp({super.key, this.agent});
+
+  /// Injectable for widget tests; null → construct a live AgentService.
+  final AgentService? agent;
+
+  @override
+  State<AgentApp> createState() => _AgentAppState();
+}
+
+class _AgentAppState extends State<AgentApp> {
+  AgentService? _agent;
+  bool _running = false;
+  String? _error;
+  List<String> _localIps = [];
+  StreamSubscription<PairingRequest>? _pairingSub;
+  final _channels = ChannelProviders();
+
+  Future<AgentService> _ensureAgent() async {
+    final a = _agent ??= widget.agent ?? AgentService(channels: _channels);
+    return a;
+  }
+
+  @override
+  void dispose() {
+    _pairingSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    setState(() => _error = null);
+    try {
+      final agent = await _ensureAgent();
+      await agent.start(
+        identity: AgentIdentity(
+          deviceUuid: await _deviceUuid(),
+          deviceName: 'Android 设备',
+        ),
+        hostTrustStore: HostTrustStore('${await _dataDir()}/hosts.json'),
+        onPairingRequest: (req, pending) {
+          if (!mounted) return null;
+          _showPairingDialog(req, pending);
+          return null;
+        },
+      );
+      await _channels.startService(title: 'HandShaker', text: '互联服务运行中');
+      _localIps = await _wifiIps();
+      setState(() => _running = true);
+    } catch (e) {
+      setState(() => _error = '$e');
+    }
+  }
+
+  Future<void> _stop() async {
+    await _agent?.stop();
+    await _channels.stopService();
+    setState(() => _running = false);
+  }
+
+  Future<String> _deviceUuid() async {
+    // Stable-enough device id for pairing; Android real value comes from
+    // ANDROID_ID via getDeviceInfo — pairing just needs persistence.
+    final dir = await _dataDir();
+    final f = File('$dir/device.uuid');
+    if (f.existsSync()) return f.readAsStringSync().trim();
+    final id = DateTime.now().microsecondsSinceEpoch.toRadixString(16) +
+        UniqueKey().hashCode.toRadixString(16);
+    f.writeAsStringSync(id);
+    return id;
+  }
+
+  Future<String> _dataDir() async {
+    // Desktop dev fallback; on Android this is app-private files dir.
+    try {
+      return Directory.systemTemp.createTempSync('hs_agent').path;
+    } catch (_) {
+      return '.';
+    }
+  }
+
+  Future<List<String>> _wifiIps() async {
+    final ips = <String>[];
+    try {
+      for (final nif in await NetworkInterface.list(
+          type: InternetAddressType.IPv4, includeLinkLocal: false)) {
+        for (final a in nif.addresses) {
+          if (!a.isLoopback) ips.add(a.address);
+        }
+      }
+    } catch (_) {}
+    return ips;
+  }
+
+  void _showPairingDialog(PairingRequest req, Completer<TrustDecision> done) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新的连接请求'),
+        content: Text('「${req.hostName}」(${req.hostUuid})\n想要连接此设备。'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              done.complete(TrustDecision.deny);
+              Navigator.pop(ctx);
+            },
+            child: const Text('拒绝'),
+          ),
+          TextButton(
+            onPressed: () {
+              done.complete(TrustDecision.once);
+              Navigator.pop(ctx);
+            },
+            child: const Text('允许一次'),
+          ),
+          FilledButton(
+            onPressed: () {
+              done.complete(TrustDecision.always);
+              Navigator.pop(ctx);
+            },
+            child: const Text('始终信任'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'HandShaker',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5B7EF7)),
+      ),
+      home: Scaffold(
+        appBar: AppBar(title: const Text('HandShaker')),
+        body: ListView(padding: const EdgeInsets.all(20), children: [
+          Card(
+            child: SwitchListTile(
+              title: const Text('互联服务'),
+              subtitle: Text(_running
+                  ? '运行中 · :${AgentService.portModern}/:${AgentService.portLegacy}'
+                  : '已停止'),
+              value: _running,
+              onChanged: (v) => v ? _start() : _stop(),
+            ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(_error!,
+                  style: const TextStyle(color: Colors.red)),
+            ),
+          if (_localIps.isNotEmpty)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.wifi),
+                title: const Text('本机地址'),
+                subtitle: Text(_localIps.join('  ')),
+              ),
+            ),
+          const SizedBox(height: 16),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('连接 Mac / Windows',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  SizedBox(height: 8),
+                  Text('1. 两端连上同一 Wi-Fi 网络\n'
+                      '2. 打开电脑端 HandShaker，选择此设备\n'
+                      '3. 在弹出的配对请求中选择「始终信任」\n'
+                      '4. 也可以插上数据线走 USB 连接（需开启 USB 调试）'),
+                ],
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
