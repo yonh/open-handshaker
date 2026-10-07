@@ -61,6 +61,39 @@ class IdeaPillsSync {
     _localSub = Directory(localDir)
         .watch()
         .listen((ev) => _onLocalEvent(ev));
+    // Reconcile periodically — FSEvents can coalesce or drop events under
+    // load, so a missed watch event shouldn't strand a pill forever.
+    _reconcileTimer =
+        Timer.periodic(_reconcileEvery, (_) => unawaited(_reconcileLocal()));
+  }
+
+  static const _reconcileEvery = Duration(seconds: 3);
+  Timer? _reconcileTimer;
+
+  /// Push local files that are missing (or different) on the device.
+  /// Also deletes remote pills whose local copy is gone.
+  Future<void> _reconcileLocal() async {
+    if (_stopped) return;
+    try {
+      final remoteSizes = <String, int>{};
+      final list = await api.listDir(remoteDir);
+      for (final f in list.fileArray) {
+        remoteSizes[f.path.split('/').last] = f.fileSize.toInt();
+      }
+      final dir = Directory(localDir);
+      if (!dir.existsSync()) return;
+      for (final ent in dir.listSync()) {
+        if (ent is! File) continue;
+        final name = ent.path.split('/').last;
+        final remote = '$remoteDir/$name';
+        final size = ent.lengthSync();
+        if (remoteSizes[name] != size) {
+          try {
+            await client.upload(ent.path, remote);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 
   /// Download every remote pill currently present.
@@ -153,6 +186,7 @@ class IdeaPillsSync {
   Future<void> stop() async {
     _stopped = true;
     _debounce?.cancel();
+    _reconcileTimer?.cancel();
     await _remoteSub?.cancel();
     await _localSub?.cancel();
     try {

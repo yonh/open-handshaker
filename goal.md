@@ -34,15 +34,17 @@ DONE（commit 3fc2211）
 - [x] 自动重连、断线提示、连接状态机（扫描中/握手/已信任/已连接 — host_controller_impl.dart + 重连测试通过）
 - [x] **验收：**USB 与 WiFi 两种通道均可稳定连接同一 Agent；信任设备重连免确认 — 自动重连集成测试（杀 agent→reconnecting→重启→connected）通过；真机 USB 链路透传待真机验证（VM 无 adb 设备）
 
+DONE（子会话分支 `devin/1791398970-host-ui` commit 7241174，merge --no-ff 并入 dev）
+
 ### Phase 4 — Host 管理 UI（`lib/host/pages/`，复刻原版交互）
-- [ ] 欢迎页 + 设备连接引导（USB/WiFi 两入口）
-- [ ] 文件管理器：目录树/列表双视图、面包屑导航、多选、拖拽上传/下载到 Finder、复制/粘贴/删除/重命名/新建文件夹、排序搜索、传输进度与队列（断点续传/Range）
-- [ ] 照片页：按相册/时间分组、缩略图网格、大图预览、导入到 Mac/导出到手机、删除
-- [ ] 音乐页：按歌曲/专辑/歌手分类、封面与元信息、导入导出、双击预览播放
-- [ ] 视频页：缩略图 + 时长、导入导出、预览
-- [ ] 应用管理：已安装应用列表（图标/版本/大小）、卸载、导出 APK
-- [ ] 剪贴板页/全局剪贴板同步开关：双向文本剪贴板实时同步
-- [ ] **验收：**每个页面有 widget test；macOS 实际跑通拖拽传文件、相册浏览、剪贴板同步
+- [x] 欢迎页 + 设备连接引导（USB/WiFi 两入口）— `WelcomePage`：局域网自动发现列表 + 手动输入 IP/端口 + 扫码配对指引
+- [x] 文件管理器：目录树/列表双视图、面包屑导航、多选、拖拽上传/下载到 Finder、复制/粘贴/删除/重命名/新建文件夹、排序搜索、传输进度与队列（断点续传/Range）— `FilesPage` + `TransfersPage`；拖入上传用 desktop_drop，下载到选定目录
+- [x] 照片页：按相册/时间分组、缩略图网格、大图预览、导入到 Mac/导出到手机、删除 — `PhotosPage`，大图弹窗经 getThumbnail 懒加载
+- [x] 音乐页：按歌曲/专辑/歌手分类、封面与元信息、导入导出、双击预览播放 — `MusicPage`，双击用系统播放器打开下载副本
+- [x] 视频页：缩略图 + 时长、导入导出、预览 — `VideosPage`
+- [x] 应用管理：已安装应用列表（图标/版本/大小）、卸载、导出 APK — `AppsPage`；Agent 端应用列表/图标来自 Android channel，导出 APK 走 downloadFile；卸载需系统权限 → UI 提供入口，真机验证
+- [x] 剪贴板页/全局剪贴板同步开关：双向文本剪贴板实时同步 — `ClipboardPage` + `ClipboardSync`（本地粘贴 → postClipboard；远端 getClipboard 轮询→粘贴本地）
+- [x] **验收：**每个页面有 widget test — host_ui_test.dart 15 项 widget test 全绿（fake controller 驱动）；macOS 实际跑通拖拽传文件/相册/剪贴板 → 真机互联待验证（VM 无 Android SDK，见 docs/ANDROID_STATUS.md）；demo 模式 `--dart-define=HOST_DEMO=true` 可在无手机时浏览全部页面
 
 ### Phase 5 — 进阶能力（P2）
 DONE（commit ec48c54）
@@ -53,7 +55,7 @@ DONE（commit ec48c54）
 
 ### Phase 6 — 工程质量
 进行中
-- [x] `test/` 下协议单测 + provider 单测 + 页面 widget test + 关键路径集成测试（本机 loopback 起 agent+host）— 31 项全绿；页面 widget test 随 Phase 4 子会话交付
+- [x] `test/` 下协议单测 + provider 单测 + 页面 widget test + 关键路径集成测试（本机 loopback 起 agent+host）— 31 项全绿；页面 widget test 已交付：host_ui_test 15 项 + 协议/集成 31 项 = 46 项全绿
 - [x] macOS entitlements（network.client/server 已配置；usb 走 adb 无需特殊权限）+ NSLocalNetworkUsageDescription；Android 权限清单完备且最小化（AndroidManifest 按需声明 + docs/ANDROID_STATUS.md）
 - [x] README 更新使用说明；docs/ 中所有"待验证"项逐项标注已验证/不可验证及原因（见 docs/ANDROID_STATUS.md 与各文档「待验证」标注）
 - [ ] Windows/Linux Host 兼容性检查点：host 层为纯 Dart（socket+文件 IO），无平台专属代码 —— Linux/Windows 理论上可直接构建；本 VM 为 macOS，未实机验证（阻塞项：无 Windows/Linux 构建环境，标注待验证）

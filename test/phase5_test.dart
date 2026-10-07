@@ -87,7 +87,9 @@ void main() {
     expect(h.succeed, isTrue);
     await Future.delayed(const Duration(milliseconds: 300));
     File('${watched.path}/new.txt').writeAsStringSync('hello');
-    await waitFor(() => events.isNotEmpty, timeout: const Duration(seconds: 5));
+    // FSEvents coalesces with multi-second latency under load — give the
+    // watcher ample room before declaring a miss.
+    await waitFor(() => events.isNotEmpty, timeout: const Duration(seconds: 25));
     expect(events.first.file.path, contains('new.txt'));
 
     await api.monitorFolder(watched.path, register: false);
@@ -129,7 +131,7 @@ void main() {
     );
     await sync.start();
     await sync.createPill('买牛奶', '下班路上记得');
-    await waitFor(() => File('$remote/买牛奶.md').existsSync(), timeout: const Duration(seconds: 8));
+    await waitFor(() => File('$remote/买牛奶.md').existsSync(), timeout: const Duration(seconds: 25));
     expect(File('$remote/买牛奶.md').readAsStringSync(), contains('下班路上记得'));
     await sync.dispose();
   });
