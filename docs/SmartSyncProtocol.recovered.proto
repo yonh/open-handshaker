@@ -1,0 +1,721 @@
+syntax = "proto2";
+package recovered.ssp;
+// Reconstructed from mac descriptors. Text field names use ObjC property names.
+// Not original .proto source; see ssp_descriptors.raw.txt for every tag/type/default.
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:399
+enum SSPRequestType {
+  SSPRequestType_HeartBeatRequest = 1;
+  SSPRequestType_GetDeviceInfoRequest = 2;
+  SSPRequestType_GetThumbnailRequest = 3;
+  SSPRequestType_GetPhotoLibRequest = 4;
+  SSPRequestType_GetVideoLibRequest = 5;
+  SSPRequestType_GetAudioLibRequest = 6;
+  SSPRequestType_GetDirFilesRequest = 7;
+  SSPRequestType_GetFileCountRequest = 8;
+  SSPRequestType_GetFileExistRequest = 9;
+  SSPRequestType_GetCreateFolderRequest = 10;
+  SSPRequestType_GetRenameFileRequest = 11;
+  SSPRequestType_GetDownloadFileRequest = 12;
+  SSPRequestType_GetDownloadFileResponseHeader = 13;
+  SSPRequestType_GetDownloadFileResponseBody = 14;
+  SSPRequestType_GetUploadFileRequestHeader = 15;
+  SSPRequestType_GetUploadFileResponseHeader = 16;
+  SSPRequestType_GetUploadFileRequestBody = 17;
+  SSPRequestType_GetUploadFileResponse = 18;
+  SSPRequestType_GetDeleteFileRequest = 19;
+  SSPRequestType_PhotoLibChange = 20;
+  SSPRequestType_AudioLibChange = 21;
+  SSPRequestType_VideoLibChange = 22;
+  SSPRequestType_MonitorFolderRequest = 23;
+  SSPRequestType_MonitorFolderResponseHeader = 24;
+  SSPRequestType_MonitorFolderResponse = 25;
+  SSPRequestType_GetClipboardRequest = 26;
+  SSPRequestType_PostClipboardRequest = 27;
+  SSPRequestType_ClearClipboardRequest = 28;
+  SSPRequestType_DeleteClipboardRequest = 29;
+  SSPRequestType_ClipboardChange = 30;
+  SSPRequestType_HandshakeRequest01 = 31;
+  SSPRequestType_HandshakeResponse01 = 32;
+  SSPRequestType_HandshakeRequest02 = 33;
+  SSPRequestType_HandshakeResponse02 = 34;
+  SSPRequestType_QuitRequest = 35;
+  SSPRequestType_CancelRequest = 36;
+  SSPRequestType_PhotoSyncRequest = 37;
+  SSPRequestType_FileChange = 38;
+  SSPRequestType_SyncMonitorRequest = 39;
+  SSPRequestType_UpdateFileInfo = 40;
+  SSPRequestType_UpdateFileInfoResponse = 41;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:441
+enum SSPFileEventType {
+  SSPFileEventType_FileEventCreate = 1;
+  SSPFileEventType_FileEventDelete = 2;
+  SSPFileEventType_FileEventCloseWrite = 3;
+  SSPFileEventType_FileEventMovedFrom = 4;
+  SSPFileEventType_FileEventMovedTo = 5;
+  SSPFileEventType_FileEventDeleteSelf = 6;
+  SSPFileEventType_FileEventMoveSelf = 7;
+  SSPFileEventType_FileEventDirChanged = 8;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:450
+enum SSPFileIOError {
+  SSPFileIOError_FileIoUnknowError = 1;
+  SSPFileIOError_FileIoInvalidName = 2;
+  SSPFileIOError_FileIoInvalidSource = 3;
+  SSPFileIOError_FileIoTargetAlreadyExist = 4;
+  SSPFileIOError_FileIoPermissionError = 5;
+  SSPFileIOError_FileIoInsufficientDiskSpaceError = 6;
+  SSPFileIOError_FileIoMd5CheckError = 7;
+  SSPFileIOError_FileIoSystemFile = 8;
+  SSPFileIOError_FileIoSdcardRemoved = 9;
+  SSPFileIOError_FileIoSdcardNoPermission = 10;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:461
+enum SSPFileIOPermission {
+  SSPFileIOPermission_AllowNone = 0;
+  SSPFileIOPermission_AllowRead = 1;
+  SSPFileIOPermission_AllowWrite = 2;
+  SSPFileIOPermission_AllowReadWrite = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:466
+enum SSPHandShakeTrustType {
+  SSPHandShakeTrustType_TrustWaiting = 1;
+  SSPHandShakeTrustType_TrustUnknow = 2;
+  SSPHandShakeTrustType_TrustNo = 3;
+  SSPHandShakeTrustType_TrustOnce = 4;
+  SSPHandShakeTrustType_TrustAlways = 5;
+  SSPHandShakeTrustType_TrustRemove = 6;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:473
+enum SSPCancelErrorCode {
+  SSPCancelErrorCode_ErrorCodeUnknown = 1;
+  SSPCancelErrorCode_ErrorCodeSdcardRemoved = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:476
+enum SSPFileType {
+  SSPFileType_Normal = 0;
+  SSPFileType_Data = 1;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:479
+enum SSPFileChangeStatus {
+  SSPFileChangeStatus_None = 0;
+  SSPFileChangeStatus_Added = 1;
+  SSPFileChangeStatus_Deleted = 2;
+  SSPFileChangeStatus_Modified = 3;
+  SSPFileChangeStatus_InfoModified = 4;
+  SSPFileChangeStatus_FileAndInfoModified = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:2
+message SSPFile {
+  optional string path = 1;
+  optional uint64 fileSize = 2;
+  optional uint64 createdTimestamp = 3;
+  optional uint64 modifiedTimestamp = 4;
+  optional bool isDirectory = 6;
+  optional string checksum = 7;
+  optional SSPFileType fileType = 8;
+  optional string prefixMd5 = 9;
+  optional string extData = 10;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:12
+message SSPImageFile {
+  optional string path = 1;
+  optional uint64 fileSize = 2;
+  optional uint64 createdTimestamp = 3;
+  optional uint64 modifiedTimestamp = 4;
+  optional uint32 width = 5;
+  optional uint32 height = 6;
+  optional uint32 orientation = 7;
+  optional uint64 mediaId = 8;
+  optional uint64 albumId = 9;
+  optional string mimeType = 10;
+  optional bytes thumbnail = 11;
+  optional string albumName = 12;
+  optional uint64 dateTaken = 13;
+  optional string latitude = 14;
+  optional string longitude = 15;
+  optional string miniThumbMagic = 16;
+  optional string title = 17;
+  optional bool getThumbnailError = 18;
+  optional bool starred = 19;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:32
+message SSPImageAlbum {
+  optional string albumPath = 1;
+  optional uint64 albumId = 2;
+  optional string albumName = 3;
+  optional SSPImageFile coverImage = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:37
+message SSPAudioFile {
+  optional string path = 1;
+  optional uint64 fileSize = 2;
+  optional uint64 createdTimestamp = 3;
+  optional uint64 modifiedTimestamp = 4;
+  optional uint64 mediaId = 5;
+  optional uint64 albumId = 6;
+  optional string title = 7;
+  optional string mimeType = 8;
+  optional uint64 artistId = 9;
+  optional string artist = 10;
+  optional string composer = 11;
+  optional uint32 genre = 12;
+  optional string comment = 13;
+  optional string copyright = 14;
+  optional string audioCodec = 15;
+  optional uint32 track = 16;
+  optional double duration = 17;
+  optional double startOffset = 18;
+  optional uint32 year = 19;
+  optional uint32 bitrate = 20;
+  optional double sampleRate = 21;
+  optional uint32 playCount = 22;
+  optional double rating = 23;
+  optional uint32 totalFrames = 24;
+  optional uint32 bitspersample = 25;
+  optional uint32 channels = 26;
+  optional string genreName = 27;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:65
+message SSPAudioAlbum {
+  optional string albumPath = 1;
+  optional uint64 albumId = 2;
+  optional string albumName = 3;
+  optional uint64 artistId = 4;
+  optional string artist = 5;
+  optional uint32 year = 6;
+  optional bytes thumbnail = 7;
+  optional bool getThumbnailError = 8;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:74
+message SSPVideoFile {
+  optional string path = 1;
+  optional uint64 fileSize = 2;
+  optional uint32 createdTimestamp = 3;
+  optional uint32 modifiedTimestamp = 4;
+  optional uint32 width = 5;
+  optional uint32 height = 6;
+  optional uint32 orientation = 7;
+  optional uint64 mediaId = 8;
+  optional uint64 albumId = 9;
+  optional string mimeType = 10;
+  optional bytes thumbnail = 11;
+  optional bool getThumbnailError = 12;
+  optional double duration = 13;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:88
+message SSPVideoAlbum {
+  optional string albumPath = 1;
+  optional uint64 albumId = 2;
+  optional string albumName = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:92
+message SSPDataRange {
+  optional uint64 offset = 1;
+  optional uint64 length = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:95
+message SSPFileEvent {
+  optional SSPFile file = 1;
+  optional SSPFileEventType event = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:98
+message SSPRequest {
+  optional SSPRequestType type = 1;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:100
+message SSPHandShakeRequest01 {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HandshakeRequest01];
+  optional string hostUuid = 2;
+  optional string hostName = 3;
+  optional uint64 hostTimestamp = 4;
+  optional string hostSmartSyncProtocolVersion = 5;
+  optional string hostAppVersion = 6;
+  optional string hostMinClientVersion = 7;
+  optional bytes md5 = 8;
+  optional bytes enckey = 9;
+  optional string hostModel = 10;
+  optional uint64 heartbeatTimeoutSecond = 11;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:112
+message SSPHandShakeResponse01 {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HandshakeResponse01];
+  optional string apkVersion = 2;
+  optional string apkVersionName = 3;
+  optional uint64 clientTimestamp = 4;
+  optional string clientSmartSyncProtocolVersion = 5;
+  optional string clientMinHostVersion = 6;
+  optional string deviceUuid = 7;
+  optional string deviceName = 8;
+  optional string usbSerial = 9;
+  optional bool isSmartisanDevice = 10;
+  optional uint64 clientMinHostVersionCode = 11;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:124
+message SSPHandShakeRequest02 {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HandshakeRequest02];
+  optional string hostUuid = 2;
+  optional bytes derivedKey = 3;
+  optional SSPHandShakeTrustType trustType = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:129
+message SSPHandShakeResponse02 {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HandshakeResponse02];
+  optional SSPHandShakeTrustType trustType = 2;
+  optional string deviceUuid = 3;
+  optional string deviceName = 4;
+  optional bytes derivedKey = 5;
+  optional string result = 6;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:136
+message SSPHeartBeatRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HeartBeatRequest];
+  optional uint64 hostTimestamp = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:139
+message SSPHeartBeatResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_HeartBeatRequest];
+  optional uint64 hostTimestamp = 2;
+  optional uint64 clientTimestamp = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:143
+message SSPQuitRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_QuitRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:145
+message SSPGetDeviceInfoRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDeviceInfoRequest];
+  optional uint64 hostTimestamp = 2;
+  optional string hostSmartSyncProtocolVersion = 3;
+  optional bool needDeviceInfoCallback = 4;
+  optional bool needPhotoLibraryCallback = 5;
+  optional bool needAudioLibraryCallback = 6;
+  optional bool needVideoLibraryCallback = 7;
+  optional string hostAppVersion = 8;
+  optional string hostMinClientVersion = 9;
+  optional uint32 hostType = 10 [default = 1];
+  optional uint32 hostAppVersionCode = 11;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:157
+message SSPGetDeviceInfoResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDeviceInfoRequest];
+  optional uint64 hostTimestamp = 2;
+  optional string hostSmartSyncProtocolVersion = 3;
+  optional string apkVersion = 4;
+  optional uint64 clientTimestamp = 5;
+  optional string clientSmartSyncProtocolVersion = 6;
+  optional string hostAppVersion = 7;
+  optional string hostMinClientVersion = 8;
+  optional string phoneModel = 9;
+  optional string phoneColor = 10;
+  optional uint64 diskSize = 11;
+  optional uint64 ramSize = 12;
+  optional double batteryCapacity = 13;
+  optional uint32 batteryPercentage = 14;
+  optional string phoneName = 15;
+  optional uint64 usedDiskSize = 16;
+  optional string rootPath = 17;
+  optional string productBrand = 18;
+  optional string productManufacturer = 19;
+  optional string smartisanVersion = 20;
+  optional bool phoneLocked = 21;
+  optional string clientMinHostVersion = 22;
+  optional string apkVersionName = 23;
+  optional string externalStoragePath = 24;
+  optional SSPFileIOPermission externalStoragePermission = 25;
+  optional uint64 extDiskSize = 26;
+  optional uint64 extUsedDiskSize = 27;
+  optional string phoneId = 28;
+  optional int64 audioSize = 29;
+  optional int64 picVideoSize = 30;
+  optional int64 downloadSize = 31;
+  optional int64 otherSize = 32;
+  optional int64 appSize = 33;
+  optional int64 cacheSize = 34;
+  optional string debugBuildTime = 35;
+  optional int64 clientMinHostVersionCode = 36;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:194
+message SSPGetDirFilesRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDirFilesRequest];
+  optional SSPFile dir = 2;
+  optional uint32 maxdepth = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:198
+message SSPGetDirFilesResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDirFilesRequest];
+  optional SSPFile dir = 2;
+  optional uint32 maxdepth = 3;
+  optional uint32 timecost = 4;
+  repeated SSPFile fileArray = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:204
+message SSPGetFileCountRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetFileCountRequest];
+  optional SSPFile dir = 2;
+  optional uint32 maxdepth = 3;
+  repeated string exclusionPatternArray = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:209
+message SSPGetFileCountResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetFileCountRequest];
+  optional SSPFile dir = 2;
+  optional uint32 maxdepth = 3;
+  repeated string exclusionPatternArray = 4;
+  optional uint64 count = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:215
+message SSPFileExistRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetFileExistRequest];
+  optional SSPFile file = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:218
+message SSPFileExistResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetFileExistRequest];
+  optional SSPFile file = 2;
+  optional bool exist = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:222
+message SSPCreateFolderRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetCreateFolderRequest];
+  optional SSPFile file = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:225
+message SSPCreateFolderResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetCreateFolderRequest];
+  optional SSPFile file = 2;
+  optional bool succeed = 3;
+  optional SSPFileIOError errorCode = 4;
+  optional string errorMessage = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:231
+message SSPRenameFileRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetRenameFileRequest];
+  optional SSPFile sourceFile = 2;
+  optional SSPFile targetFile = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:235
+message SSPRenameFileResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetRenameFileRequest];
+  optional SSPFile sourceFile = 2;
+  optional SSPFile targetFile = 3;
+  optional bool succeed = 4;
+  optional SSPFileIOError errorCode = 5;
+  optional string errorMessage = 6;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:242
+message SSPDeleteFileRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDeleteFileRequest];
+  optional SSPFile file = 2;
+  optional bool isSync = 3;
+  optional bool isTrash = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:247
+message SSPDeleteFileResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDeleteFileRequest];
+  optional SSPFile file = 2;
+  optional bool succeed = 4;
+  optional SSPFileIOError errorCode = 5;
+  optional string errorMessage = 6;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:253
+message SSPMonitorFolderRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_MonitorFolderRequest];
+  optional SSPFile file = 2;
+  optional bool register_p = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:257
+message SSPMonitorFolderResponseHeader {
+  optional SSPRequestType type = 1 [default = SSPRequestType_MonitorFolderResponseHeader];
+  optional bool succeed = 2;
+  optional string errorMessage = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:261
+message SSPMonitorFolderResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_MonitorFolderResponse];
+  repeated SSPFileEvent eventArray = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:264
+message SSPDownloadFileRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDownloadFileRequest];
+  optional SSPFile file = 2;
+  optional SSPDataRange range = 3;
+  optional bool needMd5 = 4;
+  optional bool gzip = 5;
+  optional bool isSync = 6;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:271
+message SSPDownloadFileResponseHeader {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetDownloadFileResponseHeader];
+  optional SSPFile file = 2;
+  optional SSPDataRange range = 3;
+  optional bool needMd5 = 4;
+  optional string dataMd5 = 5;
+  optional bool ready = 6;
+  optional SSPFileIOError errorCode = 7;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:279
+message SSPUploadFileRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetUploadFileRequestHeader];
+  optional SSPFile file = 2;
+  optional string dataMd5 = 3;
+  optional bool gzip = 4;
+  optional bool isSync = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:285
+// Raw default type=18 is intentional. Enum header value=16; operation override is unverified.
+message SSPUploadFileResponseHeader {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetUploadFileResponse];
+  optional SSPFile file = 2;
+  optional bool ready = 3;
+  optional SSPFileIOError errorCode = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:290
+message SSPUploadFileResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetUploadFileResponse];
+  optional SSPFile file = 2;
+  optional bool canceled = 3;
+  optional bool succeed = 4;
+  optional SSPFileIOError errorCode = 5;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:296
+message SSPGetThumbnailRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetThumbnailRequest];
+  repeated SSPImageFile imageArray = 2;
+  repeated SSPVideoFile videoArray = 3;
+  repeated SSPAudioAlbum audioAlbumArray = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:301
+message SSPGetThumbnailResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetThumbnailRequest];
+  repeated SSPImageFile imageArray = 2;
+  repeated SSPVideoFile videoArray = 3;
+  repeated SSPAudioAlbum audioAlbumArray = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:306
+message SSPGetPhotoLibraryRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetPhotoLibRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:308
+message SSPGetPhotoLibraryResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetPhotoLibRequest];
+  repeated SSPImageFile imageArray = 2;
+  repeated SSPImageAlbum albumArray = 3;
+  optional uint64 cameraAlbumId = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:313
+message SSPGetVideoLibraryRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetVideoLibRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:315
+message SSPGetVideoLibraryResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetVideoLibRequest];
+  repeated SSPVideoFile videoArray = 2;
+  repeated SSPVideoAlbum albumArray = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:319
+message SSPGetAudioLibraryRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetAudioLibRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:321
+message SSPGetAudioLibraryResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetAudioLibRequest];
+  repeated SSPAudioFile audioArray = 2;
+  repeated SSPAudioAlbum albumArray = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:325
+message SSPPhotoLibraryChange {
+  optional SSPRequestType type = 1 [default = SSPRequestType_PhotoLibChange];
+  repeated SSPImageFile addedImageArray = 2;
+  repeated SSPImageFile deletedImageArray = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:329
+message SSPVideoLibraryChange {
+  optional SSPRequestType type = 1 [default = SSPRequestType_VideoLibChange];
+  repeated SSPVideoFile addedVideoArray = 2;
+  repeated SSPVideoFile deletedVideoArray = 3;
+  repeated SSPVideoFile updatedVideoArray = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:334
+message SSPAudioLibraryChange {
+  optional SSPRequestType type = 1 [default = SSPRequestType_AudioLibChange];
+  repeated SSPAudioFile addedAudioArray = 2;
+  repeated SSPAudioFile deletedAudioArray = 3;
+  repeated SSPAudioAlbum addedAlbumArray = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:339
+message SSPClipboard {
+  optional bytes content = 1;
+  optional int64 mstimestamp = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:342
+message SSPGetClipboardRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetClipboardRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:344
+message SSPGetClipboardResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_GetClipboardRequest];
+  repeated SSPClipboard clipboardArray = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:347
+message SSPPostClipboardRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_PostClipboardRequest];
+  required SSPClipboard clipboard = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:350
+message SSPPostClipboardResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_PostClipboardRequest];
+  optional bool succeed = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:353
+message SSPClearClipboardRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_ClearClipboardRequest];
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:355
+message SSPClearClipboardResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_ClearClipboardRequest];
+  optional bool succeed = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:358
+message SSPDeleteClipboardRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_DeleteClipboardRequest];
+  required SSPClipboard clipboard = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:361
+message SSPDeleteClipboardResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_DeleteClipboardRequest];
+  optional bool succeed = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:364
+message SSPClipboardChange {
+  optional SSPRequestType type = 1 [default = SSPRequestType_ClipboardChange];
+  repeated SSPClipboard clipboardArray = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:367
+message SSPCancelRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_CancelRequest];
+  optional uint64 sessionId = 2;
+  optional SSPCancelErrorCode errorCode = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:371
+message SSPPhotoSyncRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_PhotoSyncRequest];
+  optional string pcId = 2;
+  repeated SSPFile filesArray = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:375
+message SSPPhotoSyncResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_PhotoSyncRequest];
+  optional bool isFirst = 2;
+  repeated SSPFile filesArray = 3;
+  optional bool isSuccess = 4;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:380
+message SSPFileChange {
+  optional SSPRequestType type = 1 [default = SSPRequestType_FileChange];
+  repeated SSPFileChangeItem fileChangeItemsArray = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:383
+message SSPFileChangeItem {
+  optional SSPFile file = 1;
+  optional SSPFileChangeStatus status = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:386
+message SSPSyncMonitorRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_SyncMonitorRequest];
+  optional bool isSyncMonitor = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:389
+message SSPSyncMonitorResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_SyncMonitorRequest];
+  optional bool isSuccess = 2;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:392
+message SSPUpdateFileRequest {
+  optional SSPRequestType type = 1 [default = SSPRequestType_UpdateFileInfo];
+  repeated SSPFile filesArray = 2;
+  optional bool isSync = 3;
+}
+
+// Source: handshaker_analysis/dumps/ssp_descriptors.raw.txt:396
+message SSPUpdateFileResponse {
+  optional SSPRequestType type = 1 [default = SSPRequestType_UpdateFileInfoResponse];
+  optional bool isSuccess = 2;
+}
+
