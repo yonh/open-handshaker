@@ -49,3 +49,10 @@ iOS 上 `main.dart` 按平台分流到 AgentApp：daemon 三端口可正常监�
 UIPasteboard）——**未实现，待后续补齐**；这些 channel 调用会拿到
 MissingPluginException，Dart 侧已按契约静默降级为空数据。
 iOS 作为 Host 角色（桌面管理 UI 纯 Dart）亦可运行。
+
+**已验证（E2E，iOS Simulator 26.5 ↔ macOS Host，commit 51f779c 后）：**
+配对握手全链路（拒绝/允许一次/始终信任）、暖信任自动重连（hosts.json
+持久化生效）、三端口监听 + Wi-Fi 自动发现、真实文件浏览、上传落盘字节
+一致、下载回环、目录监听在 iOS 优雅降级（FileSystemEntity.watch 不支持）。
+注意：iOS 模拟器内绑定的端口实际落在宿主机网络上（lsof 可见），
+会与宿主机上同端口进程冲突。
