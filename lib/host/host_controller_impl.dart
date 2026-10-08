@@ -304,7 +304,7 @@ class HostControllerImpl extends HostController {
           _publishTransfers();
         });
       } else {
-        final tmp = '${t.localPath}.hsdownload';
+        final tmp = SspClient.downloadTmpPath(t.localPath);
         final offset = File(tmp).existsSync() ? File(tmp).lengthSync() : 0;
         t.done = offset;
         await client.download(t.remotePath, t.localPath,

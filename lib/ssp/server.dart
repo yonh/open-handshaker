@@ -188,7 +188,10 @@ class SspAgentServer {
   Future<void> _onData(AgentSession session, Uint8List bytes) async {
     List<ModernPacket> packets;
     try {
-      packets = _packetReader[session]!.add(bytes);
+      // Bytes can arrive after the session was already dropped.
+      final reader = _packetReader[session];
+      if (reader == null) return;
+      packets = reader.add(bytes);
     } on FormatException {
       await session.channel.close();
       _drop(session);

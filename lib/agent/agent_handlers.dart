@@ -305,9 +305,15 @@ class AgentHandlers {
     _monitoredFolders[sessionId] = path;
     final dir = Directory(path);
     if (!dir.existsSync()) return;
-    _watchers[sessionId] =
-        dir.watch(recursive: true).listen((ev) => _emitEvent(session, sessionId, ev));
-    unawaited(_watchers[sessionId]!.asFuture().catchError((_) {}));
+    // FileSystemEntity.watch is unsupported on iOS — degrade to no-op
+    // rather than letting the exception kill the session.
+    try {
+      _watchers[sessionId] =
+          dir.watch(recursive: true).listen((ev) => _emitEvent(session, sessionId, ev));
+      unawaited(_watchers[sessionId]!.asFuture().catchError((_) {}));
+    } catch (_) {
+      _monitoredFolders.remove(sessionId);
+    }
   }
 
   void _unwatchFolder(int sessionId) {

@@ -145,6 +145,14 @@ class TransferCancelled implements Exception {
 
 /// Modern SSP v2 host client over a [ByteChannel].
 class SspClient {
+  /// Deterministic temp path for a download's partial body. The original
+  /// `.hsdownload`-beside-target convention breaks under the macOS sandbox
+  /// (the save-panel grant covers the selected path only, not a sibling
+  /// temp file), so partials live in system temp instead.
+  static String downloadTmpPath(String localPath) =>
+      '${Directory.systemTemp.path}/handshaker_dl_'
+      '${localPath.hashCode.abs().toRadixString(16)}.part';
+
   SspClient(this.channel, {required this.identity, this.trustStore});
 
   final ByteChannel channel;
@@ -408,7 +416,7 @@ class SspClient {
     var expected = -1;
     RandomAccessFile? raf;
     var received = 0;
-    final tmpPath = '$localPath.hsdownload';
+    final tmpPath = downloadTmpPath(localPath);
 
     Future<void> handleBytes(Uint8List b, {bool skipWrite = false}) async {
       pending.add(b);
@@ -478,7 +486,13 @@ class SspClient {
     }
     final target = File(localPath);
     if (target.existsSync()) await target.delete();
-    await File(tmpPath).rename(localPath);
+    try {
+      await File(tmpPath).rename(localPath);
+    } on FileSystemException {
+      // EXDEV: temp and target on different volumes — copy then delete.
+      await File(tmpPath).copy(localPath);
+      await File(tmpPath).delete();
+    }
     return header!;
   }
 

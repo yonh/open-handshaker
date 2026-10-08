@@ -34,6 +34,9 @@ void main() {
     setUpAll(() async {
       agent = AgentService();
       await agent.start(
+        modernPort: 13088,
+        legacyPort: 13086,
+        httpPort: 39999,
         identity: AgentIdentity(
             deviceUuid: 'dev-ctl', deviceName: 'Ctl Pixel'),
         hostTrustStore: HostTrustStore('${tmp.path}/hosts-ctl.json'),
@@ -47,10 +50,10 @@ void main() {
       ctl = makeCtl();
       final promptFuture = ctl.pairingPrompts.first;
       final f = ctl.connect(DeviceCandidate(
-        id: 'manual:127.0.0.1:10088',
+        id: 'manual:127.0.0.1:13088',
         label: '127.0.0.1',
         address: '127.0.0.1',
-        port: 10088,
+        port: 13088,
         source: DiscoverySource.manual,
       ));
       final prompt = await promptFuture.timeout(const Duration(seconds: 10));
@@ -73,10 +76,10 @@ void main() {
       );
       final promptFuture = ctl.pairingPrompts.first;
       final f = ctl.connect(DeviceCandidate(
-        id: 'manual:127.0.0.1:10088',
+        id: 'manual:127.0.0.1:13088',
         label: 'x',
         address: '127.0.0.1',
-        port: 10088,
+        port: 13088,
         source: DiscoverySource.manual,
       ));
       (await promptFuture.timeout(const Duration(seconds: 10)))
@@ -91,6 +94,9 @@ void main() {
     test('socket drop → reconnecting → connected', () async {
       var agent = AgentService();
       await agent.start(
+        modernPort: 13088,
+        legacyPort: 13086,
+        httpPort: 39999,
         identity:
             AgentIdentity(deviceUuid: 'dev-rec', deviceName: 'Rec Pixel'),
         hostTrustStore: HostTrustStore('${tmp.path}/hosts-rec.json'),
@@ -105,10 +111,10 @@ void main() {
       // first connect (host approves automatically)
       ctl.pairingPrompts.listen((p) => p.completer.complete(true));
       await ctl.connect(DeviceCandidate(
-        id: 'manual:127.0.0.1:10088',
+        id: 'manual:127.0.0.1:13088',
         label: 'x',
         address: '127.0.0.1',
-        port: 10088,
+        port: 13088,
         source: DiscoverySource.wifi,
       ));
       expect(ctl.state, ConnState.connected);
@@ -120,6 +126,9 @@ void main() {
       // bring the agent back — reconnect uses the stored derivedKey
       agent = AgentService();
       await agent.start(
+        modernPort: 13088,
+        legacyPort: 13086,
+        httpPort: 39999,
         identity:
             AgentIdentity(deviceUuid: 'dev-rec', deviceName: 'Rec Pixel'),
         hostTrustStore: HostTrustStore('${tmp.path}/hosts-rec.json'),
@@ -134,16 +143,19 @@ void main() {
   });
 
   group('discovery', () {
-    test('wifi probe finds the legacy :10086 port; prefixes are private',
+    test('wifi probe finds the legacy port; prefixes are private',
         () async {
       final agent = AgentService();
       await agent.start(
+        modernPort: 13088,
+        legacyPort: 13086,
+        httpPort: 39999,
         identity: AgentIdentity(deviceUuid: 'dev-wifi', deviceName: 'W'),
         hostTrustStore: HostTrustStore('${tmp.path}/hosts-wifi.json'),
         onPairingRequest: (req, pending) => TrustDecision.always,
       );
       final wifi = WifiDiscovery();
-      expect(await wifi.probe('127.0.0.1', 10086), isTrue);
+      expect(await wifi.probe('127.0.0.1', 13086), isTrue);
       expect(await wifi.probe('127.0.0.1', 3), isFalse);
       final prefixes = await wifi.localPrefixes();
       expect(prefixes, isNotEmpty);

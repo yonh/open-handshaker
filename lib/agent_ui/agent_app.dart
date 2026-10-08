@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../agent/agent_service.dart';
@@ -29,6 +30,8 @@ class _AgentAppState extends State<AgentApp> {
   List<String> _localIps = [];
   StreamSubscription<PairingRequest>? _pairingSub;
   final _channels = ChannelProviders();
+  // Dialogs need a context below MaterialApp — the state context isn't one.
+  final _navKey = GlobalKey<NavigatorState>();
 
   Future<AgentService> _ensureAgent() async {
     final a = _agent ??= widget.agent ?? AgentService(channels: _channels);
@@ -85,11 +88,17 @@ class _AgentAppState extends State<AgentApp> {
   }
 
   Future<String> _dataDir() async {
-    // Desktop dev fallback; on Android this is app-private files dir.
+    // Persist identity/trust under app support (survives restarts); fall
+    // back to a fixed temp subdir where plugin channels are unavailable.
     try {
-      return Directory.systemTemp.createTempSync('hs_agent').path;
+      final dir = await getApplicationSupportDirectory();
+      final d = Directory('${dir.path}/agent');
+      if (!d.existsSync()) await d.create(recursive: true);
+      return d.path;
     } catch (_) {
-      return '.';
+      final d = Directory('${Directory.systemTemp.path}/handshaker_agent');
+      if (!d.existsSync()) d.createSync(recursive: true);
+      return d.path;
     }
   }
 
@@ -121,7 +130,7 @@ class _AgentAppState extends State<AgentApp> {
 
   void _showPairingDialog(PairingRequest req, Completer<TrustDecision> done) {
     showDialog<void>(
-      context: context,
+      context: _navKey.currentContext ?? context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: const Text('新的连接请求'),
@@ -156,6 +165,7 @@ class _AgentAppState extends State<AgentApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navKey,
       title: 'HandShaker',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

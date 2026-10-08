@@ -203,7 +203,11 @@ class _ClipboardPageState extends State<ClipboardPage> {
     final api = _controller.api;
     if (api == null) return;
     try {
-      await api.postClipboardText(text);
+      final ok = await api.postClipboardText(text);
+      if (!ok) {
+        setState(() => _status = '发送失败：设备未接受');
+        return;
+      }
       _text.clear();
       setState(() => _status = '已发送到手机');
       await _reload();
