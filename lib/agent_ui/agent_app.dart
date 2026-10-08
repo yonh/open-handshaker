@@ -52,7 +52,7 @@ class _AgentAppState extends State<AgentApp> {
       await agent.start(
         identity: AgentIdentity(
           deviceUuid: _uuid,
-          deviceName: 'Android 设备',
+          deviceName: _deviceName,
         ),
         hostTrustStore: HostTrustStore('${await _dataDir()}/hosts.json'),
         onPairingRequest: (req, pending) {
@@ -122,11 +122,16 @@ class _AgentAppState extends State<AgentApp> {
     final ip = _localIps.isNotEmpty ? _localIps.first : '';
     return 'handshaker://connect?ip=$ip'
         '&port=${AgentService.portLegacy}'
-        '&name=${Uri.encodeComponent('Android 设备')}'
+        '&name=${Uri.encodeComponent(_deviceName)}'
         '&uuid=$_uuid';
   }
 
   String _uuid = '';
+
+  /// Platform-aware fallback name — the Kotlin channel may override it via
+  /// getDeviceInfo, but pairing/QR need something sensible on iOS too.
+  String get _deviceName =>
+      Platform.isAndroid ? 'Android 设备' : 'iOS 设备';
 
   void _showPairingDialog(PairingRequest req, Completer<TrustDecision> done) {
     showDialog<void>(
@@ -219,19 +224,23 @@ class _AgentAppState extends State<AgentApp> {
               ),
             ),
           const SizedBox(height: 16),
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('连接 Mac / Windows',
+                  const Text('连接 Mac / Windows',
                       style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
-                  Text('1. 两端连上同一 Wi-Fi 网络\n'
-                      '2. 打开电脑端 HandShaker，选择此设备\n'
-                      '3. 在弹出的配对请求中选择「始终信任」\n'
-                      '4. 也可以插上数据线走 USB 连接（需开启 USB 调试）'),
+                  const SizedBox(height: 8),
+                  Text(Platform.isAndroid
+                      ? '1. 两端连上同一 Wi-Fi 网络\n'
+                          '2. 打开电脑端 HandShaker，选择此设备\n'
+                          '3. 在弹出的配对请求中选择「始终信任」\n'
+                          '4. 也可以插上数据线走 USB 连接（需开启 USB 调试）'
+                      : '1. 两端连上同一 Wi-Fi 网络\n'
+                          '2. 打开电脑端 HandShaker，选择此设备\n'
+                          '3. 在弹出的配对请求中选择「始终信任」'),
                 ],
               ),
             ),

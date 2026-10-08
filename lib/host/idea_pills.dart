@@ -55,6 +55,9 @@ class IdeaPillsSync {
     await pullAll();
     _remoteSub = _hub.folderEvents.listen((resp) {
       for (final ev in resp.eventArray) {
+        // folderEvents is a shared feed for every watched dir — other
+        // monitors (e.g. FilesPage) must not pull files into the pills dir.
+        if (!ev.file.path.startsWith('$remoteDir/')) continue;
         _onRemoteEvent(ev);
       }
     });

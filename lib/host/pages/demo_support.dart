@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io' show zlib;
+import 'dart:convert';
+import 'dart:io' show File, zlib;
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
@@ -99,6 +100,47 @@ HostIdentity _demoIdentity() =>
     _cachedIdentity ??= HostIdentity.generate(
         hostUuid: 'demo-host', hostName: 'Demo Mac');
 
+/// Demo client whose transfers never touch the wire: download writes a
+/// placeholder body locally, upload reports the local size. Lets
+/// PhotoSyncEngine / IdeaPillsSync complete their round-trips in demo mode
+/// instead of stalling on a stub channel.
+class _DemoClient extends SspClient {
+  _DemoClient() : super(_StubChannel(), identity: _demoIdentity());
+
+  @override
+  Future<pb.SSPDownloadFileResponseHeader> download(String remotePath,
+      String localPath,
+      {int offset = 0,
+      int length = 0,
+      bool needMd5 = false,
+      void Function(int received, int total)? onProgress,
+      bool Function()? cancelled}) async {
+    final body = utf8.encode('demo content for $remotePath\n');
+    final f = File(localPath);
+    await f.parent.create(recursive: true);
+    await f.writeAsBytes(body);
+    onProgress?.call(body.length, body.length);
+    return pb.SSPDownloadFileResponseHeader()
+      ..ready = true
+      ..range = (pb.SSPDataRange()
+        ..offset = Int64(0)
+        ..length = Int64(body.length));
+  }
+
+  @override
+  Future<pb.SSPUploadFileResponse> upload(String localPath, String remotePath,
+      {void Function(int sent, int total)? onProgress,
+      bool Function()? cancelled}) async {
+    final size = await File(localPath).length();
+    onProgress?.call(size, size);
+    return pb.SSPUploadFileResponse()
+      ..succeed = true
+      ..file = (pb.SSPFile()
+        ..path = remotePath
+        ..fileSize = Int64(size));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // DemoSspApi — canned SSP responses for UI development and widget tests.
 // ---------------------------------------------------------------------------
@@ -118,7 +160,7 @@ pb.SSPFile _f(String path,
 /// [SspApi] subclass backed by canned data. Mutable fields let tests replace
 /// fixtures; [calls] records invoked operations for assertions.
 class DemoSspApi extends SspApi {
-  DemoSspApi() : super(SspClient(_StubChannel(), identity: _demoIdentity())) {
+  DemoSspApi() : super(_DemoClient()) {
     _seed();
   }
 
