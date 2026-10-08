@@ -25,13 +25,18 @@ class PhotoSyncEngine {
     required this.localDir,
     required this.pcId,
     PushHub? pushHub,
-  }) : _hub = pushHub ?? PushHub(client);
+  })  : _hub = pushHub ?? PushHub(client),
+        _ownsHub = pushHub == null;
 
   final SspClient client;
   final SspApi api;
   final String localDir;
   final String pcId;
   final PushHub _hub;
+
+  /// Only dispose the hub when this engine created it — a hub passed
+  /// in is shared with other pages/engines.
+  final bool _ownsHub;
 
   StreamSubscription<pb.SSPFileChange>? _changeSub;
   bool _syncing = false;
@@ -170,6 +175,6 @@ class PhotoSyncEngine {
 
   Future<void> dispose() async {
     await stop();
-    await _hub.dispose();
+    if (_ownsHub) await _hub.dispose();
   }
 }

@@ -126,7 +126,10 @@ class _SessionQueue {
     }
     final w = Completer<Uint8List>();
     _waiter = w;
-    return timeout == null ? w.future : w.future.timeout(timeout);
+    if (timeout == null) return w.future;
+    return w.future.timeout(timeout).whenComplete(() {
+      if (identical(_waiter, w)) _waiter = null;
+    });
   }
 
   void close() {
@@ -149,9 +152,11 @@ class SspClient {
   /// `.hsdownload`-beside-target convention breaks under the macOS sandbox
   /// (the save-panel grant covers the selected path only, not a sibling
   /// temp file), so partials live in system temp instead.
-  static String downloadTmpPath(String localPath) =>
+  static String downloadTmpPath(String localPath,
+          [String remotePath = '']) =>
       '${Directory.systemTemp.path}/handshaker_dl_'
-      '${localPath.hashCode.abs().toRadixString(16)}.part';
+      '${md5Hex(utf8.encode('$remotePath\u2192$localPath')).substring(0, 16)}'
+      '.part';
 
   SspClient(this.channel, {required this.identity, this.trustStore});
 
@@ -194,8 +199,12 @@ class SspClient {
         continue;
       }
       if (chunk.isPush) {
-        for (final m in _pushDemux.addChunk(chunk)) {
-          _pushCtl.add(SspPush(m.sessionId, m.payload));
+        try {
+          for (final m in _pushDemux.addChunk(chunk)) {
+            _pushCtl.add(SspPush(m.sessionId, m.payload));
+          }
+        } catch (_) {
+          _pushDemux.dropSession(chunk.sessionId);
         }
         continue;
       }
@@ -297,8 +306,10 @@ class SspClient {
       ..isSmartisanDevice = resp01.isSmartisanDevice
       ..lastConnection = DateTime.now()
       ..connectionCount = record.connectionCount + 1;
-    store?.add(record);
-    await store?.save();
+    // Do NOT persist the record yet — a stored row would skip
+    // approveUnknownDevice and (with a forged trustType) bypass pairing
+    // on the next connect. The record is only saved after the device
+    // grants trust AND proves it with the signed result.
 
     // Loop: TrustWaiting -> keep reading on session 2.
     while (true) {
@@ -315,14 +326,15 @@ class SspClient {
           throw StateError('device ${resp02.deviceUuid} refused pairing');
         case Trust.once:
         case Trust.always:
+          if (!_verifyResultProof(resp02.result)) {
+            throw StateError('handshake result proof failed');
+          }
           record
             ..trustType = resp02.trustType
             ..derivedKey =
                 resp02.derivedKey.isEmpty ? null : Uint8List.fromList(resp02.derivedKey);
+          store?.add(record);
           await store?.save();
-          if (!_verifyResultProof(resp02.result)) {
-            throw StateError('handshake result proof failed');
-          }
           _ready = true;
           trustedDevice = record;
           return SspHandshakeResult(
@@ -416,7 +428,7 @@ class SspClient {
     var expected = -1;
     RandomAccessFile? raf;
     var received = 0;
-    final tmpPath = downloadTmpPath(localPath);
+    final tmpPath = downloadTmpPath(localPath, remotePath);
 
     Future<void> handleBytes(Uint8List b, {bool skipWrite = false}) async {
       pending.add(b);
@@ -477,8 +489,13 @@ class SspClient {
       throw StateError('connection closed before download header');
     }
     if (aborted) throw const TransferCancelled();
+    if (received < expected) {
+      await File(tmpPath).delete().catchError((_) => File(tmpPath));
+      throw StateError(
+          'download truncated: got $received of $expected bytes');
+    }
     if (needMd5 && header!.dataMd5.isNotEmpty) {
-      final digest = md5Hex(await File(tmpPath).readAsBytes());
+      final digest = await md5FileHex(File(tmpPath));
       if (digest.toLowerCase() != header!.dataMd5.toLowerCase()) {
         await File(tmpPath).delete();
         throw StateError('download md5 mismatch');
@@ -505,7 +522,7 @@ class SspClient {
     final file = File(localPath);
     final total = await file.length();
     final sid = _allocSession();
-    final checksum = md5Hex(await file.readAsBytes());
+    final checksum = await md5FileHex(file);
     final stat = await file.stat();
     final req = pb.SSPUploadFileRequest()
       ..type = Req.uploadFileReqHeader
@@ -549,6 +566,9 @@ class SspClient {
         final n =
             (total - sent) < ModernTransport.maxFileChunk ? (total - sent) : ModernTransport.maxFileChunk;
         final chunk = await raf.read(n);
+        if (chunk.isEmpty) {
+          throw StateError('local file truncated during upload');
+        }
         _send(ModernTransport.filePacket(sid, chunk));
         sent += chunk.length;
         onProgress?.call(sent, total);

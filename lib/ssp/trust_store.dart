@@ -101,10 +101,13 @@ class TrustStore {
   Future<void> save() async {
     final f = File(filePath);
     await f.parent.create(recursive: true);
-    await f.writeAsString(jsonEncode({
+    // Write-then-rename so a crash mid-write can't truncate the store.
+    final tmp = File('$filePath.tmp');
+    await tmp.writeAsString(jsonEncode({
       'version': 1,
       'devices': [for (final d in _devices.values) d.toJson()],
     }));
+    await tmp.rename(filePath);
   }
 }
 
@@ -181,9 +184,11 @@ class HostTrustStore {
   Future<void> save() async {
     final f = File(filePath);
     await f.parent.create(recursive: true);
-    await f.writeAsString(jsonEncode({
+    final tmp = File('$filePath.tmp');
+    await tmp.writeAsString(jsonEncode({
       'version': 1,
       'hosts': [for (final h in _hosts.values) h.toJson()],
     }));
+    await tmp.rename(filePath);
   }
 }

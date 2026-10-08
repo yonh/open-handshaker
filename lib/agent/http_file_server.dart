@@ -17,16 +17,23 @@ import 'dart:io';
 ///  * A new connection per request is honoured — Connection: close by
 ///    default unless the client asks for keep-alive AND we can satisfy it.
 class HttpFileServer {
-  HttpFileServer._(this._server);
+  HttpFileServer._(this._server, this._tokenValidator);
 
   final HttpServer _server;
 
+  /// Validates the `token` query param on `file_path` requests; when set,
+  /// requests without a valid token are refused (LAN unauthenticated file
+  /// read otherwise). Paired hosts prove themselves with the derived key
+  /// they received during the SSP handshake.
+  final bool Function(String? token)? _tokenValidator;
+
   static Future<HttpFileServer> bind({int port = 19999,
-      InternetAddress? address}) async {
+      InternetAddress? address,
+      bool Function(String? token)? tokenValidator}) async {
     final s = await HttpServer.bind(
         address ?? InternetAddress.anyIPv4, port,
         shared: true);
-    final self = HttpFileServer._(s);
+    final self = HttpFileServer._(s, tokenValidator);
     s.listen(self._handle);
     return self;
   }
@@ -69,7 +76,19 @@ class HttpFileServer {
         return;
       }
       if (rawQuery.startsWith('file_path=')) {
-        final path = Uri.decodeComponent(rawQuery.substring(10));
+        final rest = rawQuery.substring(10);
+        // Optional `&token=...` suffix for authenticated file serving.
+        final split = rest.indexOf('&token=');
+        final pathPart = split < 0 ? rest : rest.substring(0, split);
+        final token = split < 0 ? null : rest.substring(split + 7);
+        if (_tokenValidator != null && !_tokenValidator(token)) {
+          resp
+            ..statusCode = HttpStatus.forbidden
+            ..contentLength = 0;
+          await resp.close();
+          return;
+        }
+        final path = Uri.decodeComponent(pathPart);
         await _serveFile(req, resp, path);
         return;
       }

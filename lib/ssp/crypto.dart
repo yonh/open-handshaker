@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'dart:io' show File;
+
 import 'package:pointycastle/export.dart';
 
 import 'bytes.dart';
@@ -114,6 +116,29 @@ Uint8List md5(Uint8List data) =>
     Uint8List.fromList(MD5Digest().process(data));
 
 String md5Hex(Uint8List data) => hex(md5(data));
+
+/// Streaming MD5 of a file range — reads in bounded chunks so large
+/// transfers never buffer the whole file in memory.
+Future<String> md5FileHex(File file, {int offset = 0, int? length}) async {
+  final digest = MD5Digest();
+  final raf = await file.open();
+  try {
+    await raf.setPosition(offset);
+    var remaining = length ?? (await file.length()) - offset;
+    while (remaining > 0) {
+      final piece =
+          await raf.read(remaining < 1 << 18 ? remaining : 1 << 18);
+      if (piece.isEmpty) break;
+      digest.update(Uint8List.fromList(piece), 0, piece.length);
+      remaining -= piece.length;
+    }
+  } finally {
+    await raf.close();
+  }
+  final out = Uint8List(digest.digestSize);
+  digest.doFinal(out, 0);
+  return hex(out);
+}
 
 /// SHA256withRSA (PKCS#1 v1.5) sign.
 Uint8List rsaSign(RSAPrivateKey key, Uint8List data) {

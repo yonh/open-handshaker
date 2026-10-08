@@ -75,7 +75,12 @@ class AgentSession {
   bool ready = false;
   int heartbeatTimeoutSecond = 60;
 
-  void send(Uint8List chunk) => channel.send(chunk);
+  void send(Uint8List chunk) {
+    // A closed channel means the peer is gone — pushing to it would throw
+    // an unhandled async error (e.g. folder-event pushes after link down).
+    if (channel.isClosed) return;
+    channel.send(chunk);
+  }
 
   /// Send a protobuf response as a logical message (u64 len + payload) chunked
   /// over [sessionId].

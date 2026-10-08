@@ -48,8 +48,12 @@ class AgentHandlers {
   void Function(AgentSession session, int sessionId)? onCancel;
 
   final _uploads = <int, _Upload>{};
-  final _monitoredFolders = <int, String>{};
-  final _watchers = <int, StreamSubscription<FileSystemEvent>>{};
+  // Watchers are keyed by path so unregister works regardless of the
+  // request sessionId; the owning session is kept to push events and to
+  // clean up when the connection dies.
+  final _monitoredFolders = <String, int>{}; // path -> registering sessionId
+  final _watchers = <String, StreamSubscription<FileSystemEvent>>{};
+  final _watchSessions = <String, AgentSession>{};
 
   /// SspAgentServer.requestHandler entry point.
   Future<GeneratedMessage?> call(AgentSession session, Uint8List proto,
@@ -125,7 +129,7 @@ class AgentHandlers {
         if (req.registerP) {
           _watchFolder(session, sessionId, req.file.path);
         } else {
-          _unwatchFolder(sessionId);
+          _unwatchFolder(req.file.path);
         }
         return pb.SSPMonitorFolderResponseHeader()
           ..type = Req.monitorFolderHeader
@@ -200,40 +204,51 @@ class AgentHandlers {
       AgentSession session, Uint8List proto, int sid) async {
     final req = pb.SSPDownloadFileRequest.fromBuffer(proto);
     final f = File(req.file.path);
-    pb.SSPDownloadFileResponseHeader header;
-    Uint8List? body;
-    if (await f.exists()) {
-      final all = await f.length();
-      final off = req.range.offset.toInt();
-      var len = req.range.length.toInt();
-      if (len == 0 || off + len > all) len = all - off;
-      if (len < 0) len = 0;
-      final raf = await f.open();
-      try {
-        await raf.setPosition(off);
-        body = Uint8List.fromList(await raf.read(len));
-      } finally {
-        await raf.close();
-      }
-      header = pb.SSPDownloadFileResponseHeader()
-        ..type = Req.downloadFileRespHeader
-        ..file = req.file
-        ..ready = true
-        ..needMd5 = req.needMd5
-        ..dataMd5 = req.needMd5 ? md5Hex(body) : ''
-        ..range = (pb.SSPDataRange()
-          ..offset = Int64(off)
-          ..length = Int64(body.length));
-    } else {
-      header = pb.SSPDownloadFileResponseHeader()
-        ..type = Req.downloadFileRespHeader
-        ..file = req.file
-        ..ready = false
-        ..errorCode = FileErr.invalidSource;
+    if (!await f.exists()) {
+      session.respond(
+          sid,
+          pb.SSPDownloadFileResponseHeader()
+            ..type = Req.downloadFileRespHeader
+            ..file = req.file
+            ..ready = false
+            ..errorCode = FileErr.invalidSource);
+      return;
     }
-    session.respond(sid, header);
-    if (body != null) {
-      session.sendRaw(sid, body);
+    final all = await f.length();
+    final off = req.range.offset.toInt();
+    var len = req.range.length.toInt();
+    if (len == 0 || off + len > all) len = all - off;
+    if (len < 0) len = 0;
+    // Hash in a streamed first pass so the header can carry dataMd5
+    // without buffering the body.
+    final digest = req.needMd5
+        ? await md5FileHex(f, offset: off, length: len)
+        : '';
+    session.respond(
+        sid,
+        pb.SSPDownloadFileResponseHeader()
+          ..type = Req.downloadFileRespHeader
+          ..file = req.file
+          ..ready = true
+          ..needMd5 = req.needMd5
+          ..dataMd5 = digest
+          ..range = (pb.SSPDataRange()
+            ..offset = Int64(off)
+            ..length = Int64(len)));
+    // Body: streamed in bounded chunks.
+    final raf = await f.open();
+    try {
+      await raf.setPosition(off);
+      var remaining = len;
+      while (remaining > 0) {
+        final piece =
+            await raf.read(remaining < 1 << 18 ? remaining : 1 << 18);
+        if (piece.isEmpty) break;
+        session.sendRaw(sid, Uint8List.fromList(piece));
+        remaining -= piece.length;
+      }
+    } finally {
+      await raf.close();
     }
   }
 
@@ -266,8 +281,8 @@ class AgentHandlers {
     }
   }
 
-  /// Monitored folders registered by hosts.
-  Map<int, String> get monitoredFolders =>
+  /// Monitored folders registered by hosts (path -> sessionId).
+  Map<String, int> get monitoredFolders =>
       Map.unmodifiable(_monitoredFolders);
 
   /// PhotoSync: respond with the device's current photo-library file list
@@ -301,27 +316,45 @@ class AgentHandlers {
   // ---------------- folder watch ----------------
 
   void _watchFolder(AgentSession session, int sessionId, String path) {
-    _unwatchFolder(sessionId);
-    _monitoredFolders[sessionId] = path;
+    _unwatchFolder(path);
+    _monitoredFolders[path] = sessionId;
+    _watchSessions[path] = session;
     final dir = Directory(path);
-    if (!dir.existsSync()) return;
+    if (!dir.existsSync()) {
+      _unwatchFolder(path);
+      return;
+    }
     // FileSystemEntity.watch is unsupported on iOS — degrade to no-op
     // rather than letting the exception kill the session.
     try {
-      _watchers[sessionId] =
-          dir.watch(recursive: true).listen((ev) => _emitEvent(session, sessionId, ev));
-      unawaited(_watchers[sessionId]!.asFuture().catchError((_) {}));
+      _watchers[path] = dir.watch(recursive: true).listen(
+          (ev) => _emitEvent(session, path, sessionId, ev));
+      unawaited(_watchers[path]!.asFuture().catchError((_) {}));
     } catch (_) {
-      _monitoredFolders.remove(sessionId);
+      _unwatchFolder(path);
     }
   }
 
-  void _unwatchFolder(int sessionId) {
-    _watchers.remove(sessionId)?.cancel();
-    _monitoredFolders.remove(sessionId);
+  void _unwatchFolder(String path) {
+    _watchers.remove(path)?.cancel();
+    _monitoredFolders.remove(path);
+    _watchSessions.remove(path);
   }
 
-  void _emitEvent(AgentSession session, int sessionId, FileSystemEvent ev) {
+  /// Session went away: drop every watcher it registered so we never
+  /// push onto a dead socket (#7).
+  void sessionClosed(AgentSession session) {
+    for (final e in _watchSessions.entries.toList()) {
+      if (identical(e.value, session)) _unwatchFolder(e.key);
+    }
+  }
+
+  void _emitEvent(
+      AgentSession session, String path, int sessionId, FileSystemEvent ev) {
+    if (session.channel.isClosed) {
+      _unwatchFolder(path);
+      return;
+    }
     final type = switch (ev) {
       FileSystemCreateEvent _ => FileEventType.create,
       FileSystemDeleteEvent _ => FileEventType.delete,

@@ -133,11 +133,22 @@ void main() {
       final body = await resp.expand((c) => c).toList();
       expect(utf8.decode(body), '0123456789abcdef');
 
-      // file
+      // file — file_path requires the paired host's derived key as token
+      final store = HostTrustStore('${tmp.path}/hosts.json');
+      await store.load();
+      final key = store.hosts.firstWhere((h) => h.derivedKey != null);
+      final tok = base64Url.encode(key.derivedKey!);
+
+      // unauthenticated requests are refused
+      req = await c.getUrl(Uri.parse(
+          'http://127.0.0.1:29999/?file_path=/etc/hosts'));
+      resp = await req.close();
+      expect(resp.statusCode, 403);
+
       final f = File('${tmp.path}/http.bin')
         ..writeAsBytesSync(List<int>.generate(100000, (i) => i % 251));
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}&token=$tok'));
       resp = await req.close();
       expect(resp.statusCode, 200);
       final data = await resp.expand((c) => c).toList();
@@ -145,7 +156,7 @@ void main() {
 
       // Range bytes=50000-
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}&token=$tok'));
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=50000-');
       resp = await req.close();
       expect(resp.statusCode, 206);
@@ -155,7 +166,7 @@ void main() {
 
       // bad range -> 416
       req = await c.getUrl(Uri.parse(
-          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}'));
+          'http://127.0.0.1:29999/?file_path=${Uri.encodeComponent(f.path)}&token=$tok'));
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=10-20');
       resp = await req.close();
       expect(resp.statusCode, 416);

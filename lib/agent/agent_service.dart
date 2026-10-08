@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import '../ssp/legacy_server.dart';
@@ -20,6 +21,8 @@ import 'providers/files_provider.dart';
 ///
 /// Construct it with the platform-side [ChannelProviders]; on desktop the
 /// channel calls degrade gracefully so the daemon runs for development.
+String _b64(List<int> bytes) => base64Url.encode(bytes);
+
 class AgentService {
   AgentService({ChannelProviders? channels, FilesProvider? files})
       : channels = channels ?? ChannelProviders(),
@@ -75,7 +78,8 @@ class AgentService {
           },
     )
       ..requestHandler = handlers.call
-      ..fileDataHandler = handlers.onFileData;
+      ..fileDataHandler = handlers.onFileData
+      ..onSessionClosed = handlers.sessionClosed;
 
     _modernSocket = await ServerSocket.bind(
         InternetAddress.anyIPv4, modernPort,
@@ -94,7 +98,15 @@ class AgentService {
       legacy!.attach(SocketChannel(sock));
     });
 
-    http = await HttpFileServer.bind(port: httpPort);
+    http = await HttpFileServer.bind(
+        port: httpPort,
+        // file_path requires a paired host's derived key; a bare device on
+        // the LAN can no longer read arbitrary files.
+        tokenValidator: (t) =>
+            t != null &&
+            hostTrustStore.hosts.any((h) =>
+                h.derivedKey != null &&
+                _b64(h.derivedKey!) == t));
   }
 
   /// Resolve a pending pairing request (device-side UI decision).

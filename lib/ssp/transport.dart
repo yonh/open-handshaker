@@ -12,6 +12,9 @@ abstract class ByteChannel {
   /// Queue bytes for sending.
   void send(Uint8List data);
 
+  /// Whether the channel has been closed; subclasses must report it.
+  bool get isClosed => false;
+
   /// Remote peer description for logs/UI.
   String get peerLabel;
 
@@ -41,8 +44,14 @@ class SocketChannel extends ByteChannel {
   String get peerLabel =>
       '${socket.remoteAddress.address}:${socket.remotePort}';
 
+  bool _closed = false;
+
+  @override
+  bool get isClosed => _closed;
+
   @override
   Future<void> close() async {
+    _closed = true;
     await socket.flush();
     await socket.close();
   }
@@ -75,8 +84,14 @@ class DuplexChannel extends ByteChannel {
   @override
   String get peerLabel => _label;
 
+  bool _closed = false;
+
+  @override
+  bool get isClosed => _closed;
+
   @override
   Future<void> close() async {
+    _closed = true;
     await _out.close();
     await _in.close();
   }

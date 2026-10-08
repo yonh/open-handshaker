@@ -164,6 +164,16 @@ class HostControllerImpl extends HostController {
   @override
   Future<void> connect(DeviceCandidate candidate) async {
     _reconnectTimer?.cancel();
+    // Tear down a previous link so its stale disconnect signal can't
+    // kill the new session, and re-arm auto-reconnect for manual connects.
+    final old = _client;
+    _client = null;
+    _api = null;
+    if (old != null) {
+      old.onDisconnected = null;
+      unawaited(old.close().catchError((_) {}));
+    }
+    _autoReconnect = true;
     _activeCandidate = candidate;
     _setState(ConnState.handshaking);
     SspClient? client;

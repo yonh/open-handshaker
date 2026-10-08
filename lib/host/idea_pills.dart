@@ -22,7 +22,8 @@ class IdeaPillsSync {
     required this.localDir,
     required this.remoteDir,
     PushHub? pushHub,
-  }) : _hub = pushHub ?? PushHub(client);
+  })  : _hub = pushHub ?? PushHub(client),
+        _ownsHub = pushHub == null;
 
   final SspClient client;
   final SspApi api;
@@ -30,9 +31,33 @@ class IdeaPillsSync {
   final String remoteDir;
   final PushHub _hub;
 
+  /// Only dispose the hub when this engine created it — a hub passed
+  /// in is shared with other pages/engines.
+  final bool _ownsHub;
+
   StreamSubscription<pb.SSPMonitorFolderResponse>? _remoteSub;
   StreamSubscription<FileSystemEvent>? _localSub;
   Timer? _debounce;
+  // Files we just wrote locally as a result of a REMOTE event. Their
+  // matching local watch events must be swallowed for a few seconds,
+  // otherwise the mirror loops forever (remote->local->remote...).
+  final _quietUntil = <String, DateTime>{};
+
+  bool _isQuiet(String path) {
+    final name = path.split('/').last;
+    final until = _quietUntil[name];
+    if (until == null) return false;
+    if (DateTime.now().isAfter(until)) {
+      _quietUntil.remove(name);
+      return false;
+    }
+    return true;
+  }
+
+  void _quietFor(String path) {
+    _quietUntil[path.split('/').last] =
+        DateTime.now().add(const Duration(seconds: 5));
+  }
   bool _stopped = false;
 
   static const _debounceDelay = Duration(milliseconds: 400);
@@ -111,6 +136,7 @@ class IdeaPillsSync {
             File(lp).lengthSync() != f.fileSize.toInt()) {
           try {
             await client.download(f.path, lp);
+            _quietFor(lp);
             n++;
           } catch (_) {}
         }
@@ -132,11 +158,15 @@ class IdeaPillsSync {
         case 5: // movedTo
           try {
             await client.download(path, lp);
+            _quietFor(lp);
           } catch (_) {}
           break;
         case 2: // delete
         case 6: // deleteSelf
-          if (File(lp).existsSync()) await File(lp).delete();
+          if (File(lp).existsSync()) {
+            _quietFor(lp);
+            await File(lp).delete();
+          }
           break;
         default:
       }
@@ -144,7 +174,7 @@ class IdeaPillsSync {
   }
 
   void _onLocalEvent(FileSystemEvent ev) {
-    if (_stopped || ev.isDirectory) return;
+    if (_stopped || ev.isDirectory || _isQuiet(ev.path)) return;
     _debounce?.cancel();
     _debounce = Timer(_debounceDelay, () async {
       final remote = _remoteFor(ev.path);
@@ -199,6 +229,6 @@ class IdeaPillsSync {
 
   Future<void> dispose() async {
     await stop();
-    await _hub.dispose();
+    if (_ownsHub) await _hub.dispose();
   }
 }

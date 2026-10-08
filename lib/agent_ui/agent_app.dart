@@ -63,16 +63,16 @@ class _AgentAppState extends State<AgentApp> {
       );
       await _channels.startService(title: 'HandShaker', text: '互联服务运行中');
       _localIps = await _wifiIps();
-      setState(() => _running = true);
+      if (mounted) setState(() => _running = true);
     } catch (e) {
-      setState(() => _error = '$e');
+      if (mounted) setState(() => _error = '$e');
     }
   }
 
   Future<void> _stop() async {
     await _agent?.stop();
     await _channels.stopService();
-    setState(() => _running = false);
+    if (mounted) setState(() => _running = false);
   }
 
   Future<String> _deviceUuid() async {
@@ -143,21 +143,21 @@ class _AgentAppState extends State<AgentApp> {
         actions: [
           TextButton(
             onPressed: () {
-              done.complete(TrustDecision.deny);
+              if (!done.isCompleted) done.complete(TrustDecision.deny);
               Navigator.pop(ctx);
             },
             child: const Text('拒绝'),
           ),
           TextButton(
             onPressed: () {
-              done.complete(TrustDecision.once);
+              if (!done.isCompleted) done.complete(TrustDecision.once);
               Navigator.pop(ctx);
             },
             child: const Text('允许一次'),
           ),
           FilledButton(
             onPressed: () {
-              done.complete(TrustDecision.always);
+              if (!done.isCompleted) done.complete(TrustDecision.always);
               Navigator.pop(ctx);
             },
             child: const Text('始终信任'),

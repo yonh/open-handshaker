@@ -22,6 +22,8 @@ import android.os.Looper
 import android.os.StatFs
 import android.provider.MediaStore
 import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -44,8 +46,48 @@ class MainActivity : FlutterActivity() {
     private var mediaObserver: ContentObserver? = null
     private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
 
+    /// Ask for the runtime media/storage permissions declared in the
+    /// manifest — Android 13+ returns empty MediaStore results until
+    /// granted. All-files access needs a settings-screen grant.
+    private fun requestStoragePermissions() {
+        val wanted = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 33) {
+            wanted += listOf(
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.READ_MEDIA_AUDIO
+            )
+        } else {
+            wanted += android.Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        val missing = wanted.filter {
+            ContextCompat.checkSelfPermission(this, it) !=
+                PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this, missing.toTypedArray(), REQ_STORAGE)
+        }
+        if (Build.VERSION.SDK_INT >= 30 &&
+            !Environment.isExternalStorageManager()) {
+            try {
+                startActivity(Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                startActivity(Intent(
+                    Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+        }
+    }
+
+    companion object {
+        private const val REQ_STORAGE = 0x4853
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        requestStoragePermissions()
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger, channelProviders
