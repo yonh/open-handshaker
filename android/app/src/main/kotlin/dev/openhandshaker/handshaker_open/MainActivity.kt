@@ -331,8 +331,12 @@ class MainActivity : FlutterActivity() {
                 albums.getOrPut(bucket) { mutableListOf() }.add(item)
             }
         }
+        // Album id must match the items' albumId (real BUCKET_ID/ALBUM_ID),
+        // not a name hash — otherwise host-side grouping/filtering misses.
         return mapOf("albums" to albums.map { (name, files) ->
-            mapOf("name" to name, "albumId" to name.hashCode().toLong(),
+            val id = (files.firstOrNull()?.get("albumId") as? Long)
+                ?: name.hashCode().toLong()
+            mapOf("name" to name, "albumId" to id,
                 "path" to "", "files" to files)
         })
     }
