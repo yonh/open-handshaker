@@ -68,9 +68,13 @@ class PhotoSyncEngine {
   }
 
   /// Where a device path lands inside [localDir] (basename only; album subdir
-  /// kept when the remote path has ≥2 segments).
+  /// kept when the remote path has ≥2 segments). `.`/`..` segments are
+  /// stripped — a hostile or buggy agent path must not escape [localDir].
   String _localPathFor(String remotePath) {
-    final seg = remotePath.split('/').where((s) => s.isNotEmpty).toList();
+    final seg = remotePath
+        .split('/')
+        .where((s) => s.isNotEmpty && s != '.' && s != '..')
+        .toList();
     if (seg.length >= 2) {
       return '$localDir/${seg[seg.length - 2]}/${seg.last}';
     }
