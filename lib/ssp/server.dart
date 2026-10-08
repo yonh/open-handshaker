@@ -222,7 +222,11 @@ class SspAgentServer {
       case ModernTransport.flagSigned:
         await _handleSigned(session, pkt);
       case ModernTransport.flagFileData:
-        fileDataHandler?.call(session, pkt.sessionId, pkt.data);
+        // Upload bodies must ride an authenticated session — a LAN peer
+        // guessing the sessionId can otherwise inject bytes mid-upload.
+        if (session.ready) {
+          fileDataHandler?.call(session, pkt.sessionId, pkt.data);
+        }
       default:
         throw FormatException('unknown flag ${pkt.flag}');
     }

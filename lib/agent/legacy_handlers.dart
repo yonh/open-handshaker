@@ -213,9 +213,16 @@ class LegacyAgentHandlers {
         pbThumbnailRequest(ids.map((i) => i.toInt()).toList(),
             req.subtype == 2 ? 2 : (req.subtype == 3 ? 3 : 1)));
     final out = BytesBuilder();
-    out.add(_be32(ids.length));
-    for (final f in thumbs.imageArray) {
-      final b = f.thumbnail;
+    final thumbs2 = req.subtype == 2
+        ? thumbs.videoArray
+        : (req.subtype == 3 ? thumbs.audioAlbumArray : thumbs.imageArray);
+    out.add(_be32(thumbs2.length));
+    for (final f in thumbs2) {
+      final b = f is pb.SSPImageFile
+          ? f.thumbnail
+          : f is pb.SSPVideoFile
+              ? f.thumbnail
+              : (f as pb.SSPAudioAlbum).thumbnail;
       out.add(_be32(b.length));
       out.add(b);
     }

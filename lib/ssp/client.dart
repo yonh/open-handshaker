@@ -379,8 +379,15 @@ class SspClient {
     final sid = sessionId ?? _allocSession();
     final proto = message.writeToBuffer();
     _send(ModernTransport.signedPacket(sid, proto, _sign));
-    return _queueFor(sid)
-        .next(timeout: timeout ?? const Duration(seconds: 30));
+    try {
+      return await _queueFor(sid)
+          .next(timeout: timeout ?? const Duration(seconds: 30));
+    } finally {
+      // Reply consumed — free the sid bookkeeping so the maps don't grow
+      // forever on a long-lived connection.
+      _sessions.remove(sid);
+      _demux.dropSession(sid);
+    }
   }
 
   /// Typed request: send [requestMsg], decode the response with [parse].

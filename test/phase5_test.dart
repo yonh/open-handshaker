@@ -87,9 +87,20 @@ void main() {
     expect(h.succeed, isTrue);
     await Future.delayed(const Duration(milliseconds: 300));
     File('${watched.path}/new.txt').writeAsStringSync('hello');
-    // FSEvents coalesces with multi-second latency under load — give the
-    // watcher ample room before declaring a miss.
-    await waitFor(() => events.isNotEmpty, timeout: const Duration(seconds: 25));
+    // FSEvents coalesces and even DROPS events under load — keep writing
+    // until the watcher reports one, then verify.
+    final sw = Stopwatch()..start();
+    var got = false;
+    while (sw.elapsed < const Duration(seconds: 45) && !got) {
+      File('${watched.path}/new.txt')
+          .writeAsStringSync('hello ${sw.elapsedMilliseconds}');
+      try {
+        await waitFor(() => events.isNotEmpty,
+            timeout: const Duration(seconds: 3));
+        got = true;
+      } catch (_) {}
+    }
+    expect(got, isTrue, reason: 'no folder event within 45s');
     expect(events.first.file.path, contains('new.txt'));
 
     await api.monitorFolder(watched.path, register: false);

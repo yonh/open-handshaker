@@ -98,15 +98,25 @@ class AgentService {
       legacy!.attach(SocketChannel(sock));
     });
 
-    http = await HttpFileServer.bind(
-        port: httpPort,
-        // file_path requires a paired host's derived key; a bare device on
-        // the LAN can no longer read arbitrary files.
-        tokenValidator: (t) =>
-            t != null &&
-            hostTrustStore.hosts.any((h) =>
-                h.derivedKey != null &&
-                _b64(h.derivedKey!) == t));
+    try {
+      http = await HttpFileServer.bind(
+          port: httpPort,
+          // file_path requires a paired host's derived key; a bare device
+          // on the LAN can no longer read arbitrary files.
+          tokenValidator: (t) =>
+              t != null &&
+              hostTrustStore.hosts.any((h) =>
+                  h.derivedKey != null &&
+                  _b64(h.derivedKey!) == t));
+    } catch (_) {
+      // Roll back the listeners already bound so a retry doesn't leave
+      // half-open sockets behind.
+      await _modernSocket?.close();
+      _modernSocket = null;
+      await _legacySocket?.close();
+      _legacySocket = null;
+      rethrow;
+    }
   }
 
   /// Resolve a pending pairing request (device-side UI decision).
