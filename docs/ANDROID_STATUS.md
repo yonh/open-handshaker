@@ -56,3 +56,21 @@ iOS 作为 Host 角色（桌面管理 UI 纯 Dart）亦可运行。
 一致、下载回环、目录监听在 iOS 优雅降级（FileSystemEntity.watch 不支持）。
 注意：iOS 模拟器内绑定的端口实际落在宿主机网络上（lsof 可见），
 会与宿主机上同端口进程冲突。
+
+## 代码审查修复记录（dev `57ffe78`）
+
+独立全库审查（review.md，40 项）后已修复的高危项：
+
+- **#2 信任绕过**：Trust 记录改为 proof 校验通过后才落盘——伪造 Response02 不再能换取永久免确认。
+- **#3 HTTP :19999 鉴权**：`file_path` 端点现在要求 `&token=<base64url(derivedKey)>`，即必须先完成 SSP 配对；未授权请求返回 403。⚠️ 这意味着 goal.md Phase 2 的"裸 curl file_path"验收方式已不可行——需先配对取 token；`?test` 回显端点仍开放用于端口验收。
+- **#4 下载 OOM**：agent 侧下载改流式分块（含流式 md5 预扫），大文件不再整文件驻留内存。
+- **#6/#7 watcher 生命周期**：monitorFolder 按路径键控，注销真正生效；session 断开自动清理其 watcher，不再向死 socket 推送。
+- **#11 运行时权限**：MainActivity 启动时申请 READ_MEDIA_IMAGES/VIDEO/AUDIO（API 33+）或 READ_EXTERNAL_STORAGE，API 30+ 引导授予 all-files 访问。
+- 其余：下载截断检测、上传中途截短保护、SessionQueue 超时 waiter 清理、flag3 仅限已握手 session、信任库原子写盘、legacy 缩略图数组、相册 albumId 统一、AgentService 半启动回滚。
+
+### 仍然存在的已知缺口（诚实记录）
+
+- **应用管理 wire 未接通**：Kotlin `getInstalledApps/uninstallApp/exportApk` 已实现但恢复版 proto 没有对应 SSP op，应用页显示"暂不支持"占位。需要协议扩展（自定义 op 或复用 :19999）才能落地。
+- **FileChange(38) 推送无发送点**：相册"自动同步"目前依赖 syncOnce/周期同步；Kotlin MediaStore observer → events 通道已在，缺 agent 侧 SSPFileChange 推送转发。
+- **agent 文件操作无路径沙箱**：设计如此——agent 本来就是远程文件管理器，配对握手即信任边界；风险在 host 私钥泄露后的横向扩散（host_identity.json 明文存放，#30）。
+- 取消下载仍会排干 wire 上已发出的字节后报 cancelled（协议无 download-cancel op，#19）。
